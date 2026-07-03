@@ -2211,7 +2211,13 @@ function PlanSetup({
   }
   return /*#__PURE__*/React.createElement("div", {
     className: "wrap settle"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost sm",
+    onClick: () => go(db.plan ? 'plan' : 'home'),
+    style: {
+      marginBottom: 14
+    }
+  }, "← ", db.plan ? 'Back to my plan' : 'Home'), /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"
   }, "Reading plan"), /*#__PURE__*/React.createElement("h2", {
     className: "display",
@@ -2494,6 +2500,7 @@ function PlanView({
 
 /* ============ Meet me / Analog pickers ============ */
 function MeetPicker({
+  go,
   startEncounter
 }) {
   const [struggle, setStruggle] = useState('');
@@ -2504,7 +2511,13 @@ function MeetPicker({
   }));
   return /*#__PURE__*/React.createElement("div", {
     className: "wrap settle"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost sm",
+    onClick: () => go('home'),
+    style: {
+      marginBottom: 14
+    }
+  }, "← Home"), /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"
   }, "Meet me here"), /*#__PURE__*/React.createElement("h2", {
     className: "display",
@@ -2607,12 +2620,19 @@ function momentLabel(m) {
   }[m] || m;
 }
 function AnalogPicker({
+  go,
   startEncounter
 }) {
   const [ref, setRef] = useState('');
   return /*#__PURE__*/React.createElement("div", {
     className: "wrap settle"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost sm",
+    onClick: () => go('home'),
+    style: {
+      marginBottom: 14
+    }
+  }, "← Home"), /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"
   }, "I have my Bible open"), /*#__PURE__*/React.createElement("h2", {
     className: "display",
@@ -2877,9 +2897,20 @@ function Encounter({
     }
   }, "Turning to the page…"));
   const STEPS = ['Pray', 'Read', 'Enter', 'Reflect', 'Walk', 'Respond'];
+  function leave() {
+    const hasWork = answers.some(a => a && a.trim()) || apply.trim() || prayer.trim();
+    if (hasWork && !window.confirm("Leave this time with God? What you've written here so far won't be saved.")) return;
+    go('home');
+  }
   return /*#__PURE__*/React.createElement("div", {
     className: "wrap"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost sm",
+    onClick: leave,
+    style: {
+      marginBottom: 12
+    }
+  }, "← Leave"), /*#__PURE__*/React.createElement("div", {
     className: "steps"
   }, STEPS.map((s, i) => /*#__PURE__*/React.createElement("span", {
     key: s,
@@ -3242,7 +3273,13 @@ function FriendsView({
   }
   return /*#__PURE__*/React.createElement("div", {
     className: "wrap settle"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost sm",
+    onClick: () => go('home'),
+    style: {
+      marginBottom: 14
+    }
+  }, "← Home"), /*#__PURE__*/React.createElement("div", {
     className: "greet settle"
   }, /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"
@@ -4335,6 +4372,7 @@ function App() {
     showAiNudge: !db.settings.aiKey && !aiNudgeDismissed,
     onDismissNudge: () => setAiNudgeDismissed(true)
   }), view === 'meet' && /*#__PURE__*/React.createElement(MeetPicker, {
+    go: go,
     startEncounter: startEncounter
   }), view === 'friends' && /*#__PURE__*/React.createElement(FriendsView, {
     db: db,
@@ -4343,6 +4381,7 @@ function App() {
     go: go,
     startEncounter: startEncounter
   }), view === 'analog' && /*#__PURE__*/React.createElement(AnalogPicker, {
+    go: go,
     startEncounter: startEncounter
   }), view === 'planSetup' && /*#__PURE__*/React.createElement(PlanSetup, {
     db: db,
