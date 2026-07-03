@@ -724,9 +724,33 @@ const PATH_REFLECT = {
 function load() {
   try {
     const r = localStorage.getItem(LS_KEY);
-    if (r) return JSON.parse(r);
+    if (!r) return null;
+    const d = JSON.parse(r);
+    if (d && d.settings && !d.settings.bibleKey) {
+      d.settings.bibleKey = DEFAULT_BIBLE_KEY;
+    }
+    return d;
   } catch (e) {}
   return null;
+}
+const DEFAULT_BIBLE_KEY = 'MM1KhTbr_s-qd0YnBNMqn';
+const DEFAULT_BIBLES = [{
+  id: 'd6e14a625393b4da-01',
+  name: 'New Living Translation',
+  abbr: 'NLT'
+}, {
+  id: '63097d2a0a2f7db3-01',
+  name: 'New King James Version',
+  abbr: 'NKJV'
+}, {
+  id: '6f11a7de016f942e-01',
+  name: 'The Message',
+  abbr: 'MSG'
+}];
+const DEFAULT_TRANSLATION = 'd6e14a625393b4da-01'; // NLT
+function knownBibles(settings) {
+  const seen = new Set(DEFAULT_BIBLES.map(b => b.id));
+  return [...DEFAULT_BIBLES, ...(settings && settings.bibles || []).filter(b => !seen.has(b.id))];
 }
 function blank() {
   return {
@@ -740,8 +764,8 @@ function blank() {
     plan: null,
     seen: {},
     settings: {
-      translation: 'web',
-      bibleKey: '',
+      translation: DEFAULT_TRANSLATION,
+      bibleKey: DEFAULT_BIBLE_KEY,
       aiKey: '',
       aiModel: 'claude-sonnet-4-5',
       bibles: [],
@@ -793,34 +817,37 @@ function parseRef(ref) {
     v2: m[4] ? +m[4] : null
   };
 }
-async function fetchPassage(ref, settings) {
-  const t = settings.translation;
-  const apiBible = settings.bibles.find(b => b.id === t);
-  if (apiBible && settings.bibleKey) {
-    const p = parseRef(ref);
-    if (!p) throw new Error("Couldn't read that reference. Try like: John 3:16 or Psalms 23");
-    const code = CODE[p.book];
-    let pid = code + '.' + p.chapter;
-    if (p.v1) {
-      pid += '.' + p.v1;
-      if (p.v2) pid += '-' + code + '.' + p.chapter + '.' + p.v2;
-    }
-    const r = await fetch(`https://api.scripture.api.bible/v1/bibles/${t}/passages/${pid}?content-type=text&include-verse-numbers=true&include-titles=false&include-notes=false`, {
-      headers: {
-        'api-key': settings.bibleKey
-      }
-    });
-    if (!r.ok) throw new Error('API.Bible could not return that passage (' + r.status + ').');
-    const d = await r.json();
-    return {
-      reference: d.data.reference,
-      translation: apiBible.name,
-      verses: d.data.content.split(/\[(\d+)\]/).filter(Boolean).reduce((acc, cur, i, arr) => acc, []),
-      raw: d.data.content.replace(/\s+/g, ' ').trim()
-    };
+function parseApiContent(content) {
+  content = content || '';
+  if (/\[\d+[-\u2013,]/.test(content)) {
+    // grouped/paraphrase versification (e.g. The Message): strip markers, present as flowing text
+    const t = content.replace(/\[[\d\u2013,\-\s]+\]/g, ' ').replace(/\s+/g, ' ').trim();
+    return t ? [{
+      v: null,
+      t
+    }] : [];
   }
-  // public-domain baseline
-  const r = await fetch(`https://bible-api.com/${encodeURIComponent(ref)}?translation=${t === 'kjv' ? 'kjv' : 'web'}`);
+  const parts = content.split(/\[(\d+)\]/);
+  const verses = [];
+  for (let i = 1; i < parts.length; i += 2) {
+    const v = +parts[i];
+    const t = (parts[i + 1] || '').replace(/\s+/g, ' ').trim();
+    if (t) verses.push({
+      v,
+      t
+    });
+  }
+  if (verses.length === 0) {
+    const t = content.replace(/\s+/g, ' ').trim();
+    if (t) verses.push({
+      v: null,
+      t
+    });
+  }
+  return verses;
+}
+async function fetchWeb(ref, translation) {
+  const r = await fetch(`https://bible-api.com/${encodeURIComponent(ref)}?translation=${translation === 'kjv' ? 'kjv' : 'web'}`);
   if (!r.ok) throw new Error("Couldn't find that passage. Try like: John 3:16 or Psalms 23");
   const d = await r.json();
   return {
@@ -832,6 +859,42 @@ async function fetchPassage(ref, settings) {
     })),
     raw: null
   };
+}
+async function fetchPassage(ref, settings) {
+  const t = settings.translation;
+  const premium = knownBibles(settings).find(b => b.id === t);
+  if (premium) {
+    try {
+      const p = parseRef(ref);
+      if (!p) throw new Error('unparsed');
+      const code = CODE[p.book];
+      let pid = code + '.' + p.chapter;
+      if (p.v1) {
+        pid += '.' + p.v1;
+        if (p.v2) pid += '-' + code + '.' + p.chapter + '.' + p.v2;
+      }
+      const key = settings.bibleKey || DEFAULT_BIBLE_KEY;
+      const r = await fetch(`https://api.scripture.api.bible/v1/bibles/${t}/passages/${pid}?content-type=text&include-verse-numbers=true&include-titles=false&include-notes=false`, {
+        headers: {
+          'api-key': key
+        }
+      });
+      if (!r.ok) throw new Error('api ' + r.status);
+      const d = await r.json();
+      const verses = parseApiContent(d.data.content);
+      if (!verses.length) throw new Error('empty');
+      return {
+        reference: d.data.reference,
+        translation: premium.abbr,
+        verses,
+        raw: null
+      };
+    } catch (e) {
+      // graceful fallback — when the premium key is capped or fails, serve the free WEB text
+      return await fetchWeb(ref, 'web');
+    }
+  }
+  return await fetchWeb(ref, t);
 }
 
 /* ============ AI ============ */
@@ -915,7 +978,12 @@ function Passage({
 }) {
   if (!data) return null;
   const first = data.verses && data.verses.length ? data.verses[0].t : data.raw || '';
-  const drop = (first || '').trim().charAt(0) || '';
+  const firstText = (first || '').trim();
+  const li = firstText.search(/[A-Za-z0-9]/);
+  const idx = li < 0 ? 0 : li;
+  const lead = firstText.slice(0, idx);
+  const drop = firstText.charAt(idx) || '';
+  const rest0 = firstText.slice(idx + 1);
   return /*#__PURE__*/React.createElement("div", {
     className: "settle"
   }, /*#__PURE__*/React.createElement("div", {
@@ -930,9 +998,9 @@ function Passage({
     }
   }) : data.verses.map((v, i) => /*#__PURE__*/React.createElement("span", {
     key: i
-  }, i === 0 ? /*#__PURE__*/React.createElement("span", {
+  }, i === 0 ? /*#__PURE__*/React.createElement(React.Fragment, null, lead, /*#__PURE__*/React.createElement("span", {
     className: "drop"
-  }, drop) : null, i > 0 && /*#__PURE__*/React.createElement("sup", null, v.v), i === 0 ? v.t.slice(1) : ' ' + v.t))));
+  }, drop), rest0) : /*#__PURE__*/React.createElement(React.Fragment, null, ' ', /*#__PURE__*/React.createElement("sup", null, v.v), v.t)))));
 }
 function Scale({
   value,
@@ -1572,7 +1640,9 @@ function Profile({
 function Home({
   db,
   go,
-  startEncounter
+  startEncounter,
+  showAiNudge,
+  onDismissNudge
 }) {
   const p = db.profile;
   const seenCh = Object.values(db.seen).reduce((a, arr) => a + arr.length, 0);
@@ -1586,7 +1656,47 @@ function Home({
     className: "greet settle"
   }, /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"
-  }, salut), /*#__PURE__*/React.createElement("h2", null, p.name, ", where shall we meet God today?")), /*#__PURE__*/React.createElement("div", {
+  }, salut), /*#__PURE__*/React.createElement("h2", null, p.name, ", where shall we meet God today?")), showAiNudge && /*#__PURE__*/React.createElement("div", {
+    className: "settle",
+    style: {
+      background: 'linear-gradient(160deg,var(--vespers-2),var(--vespers))',
+      borderRadius: 14,
+      padding: '17px 19px',
+      margin: '0 0 20px',
+      boxShadow: 'var(--shadow)'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "eyebrow",
+    style: {
+      color: 'var(--gilt-glow)'
+    }
+  }, "Unlock the heart of this room"), /*#__PURE__*/React.createElement("p", {
+    className: "serif",
+    style: {
+      fontSize: 15.5,
+      lineHeight: 1.56,
+      margin: '7px 0 0',
+      color: '#dfe8f4'
+    }
+  }, "Add your own free AI key and your reflections become truly yours — questions and understanding written for your season, your temperament, this very moment. It's the difference between a good devotional and one that meets ", /*#__PURE__*/React.createElement("i", null, "you"), "."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 13,
+      display: 'flex',
+      gap: 10,
+      flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn gilt sm",
+    onClick: () => go('settings')
+  }, "Add my key"), /*#__PURE__*/React.createElement("button", {
+    className: "btn sm",
+    style: {
+      background: 'transparent',
+      color: '#aeb9cd',
+      border: '1px solid rgba(255,255,255,.18)'
+    },
+    onClick: onDismissNudge
+  }, "Maybe later"))), /*#__PURE__*/React.createElement("div", {
     className: "doors"
   }, /*#__PURE__*/React.createElement("button", {
     className: "door settle",
@@ -2848,6 +2958,7 @@ function Settings({
   const [aiModel, setAiModel] = useState(s.aiModel);
   const [loadingBibles, setLoadingBibles] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [showOwnKey, setShowOwnKey] = useState(s.bibleKey && s.bibleKey !== DEFAULT_BIBLE_KEY);
   const [resetText, setResetText] = useState('');
   const fileRef = useRef();
   function saveSettings(patch) {
@@ -2918,7 +3029,11 @@ function Settings({
     id: 'kjv',
     name: 'King James Version (free)'
   }];
-  const all = [...pdTranslations, ...s.bibles.filter(b => ['NLT', 'NKJV', 'ESV', 'NIV', 'NASB', 'CSB', 'MSG', 'AMP'].some(x => (b.name || '').toUpperCase().includes(x)))];
+  const ownExtras = (s.bibles || []).filter(b => !DEFAULT_BIBLES.some(d => d.id === b.id) && b.id !== 'web' && b.id !== 'kjv');
+  const all = [...DEFAULT_BIBLES.map(b => ({
+    id: b.id,
+    name: b.abbr + ' \u2014 ' + b.name
+  })), ...pdTranslations, ...ownExtras];
   return /*#__PURE__*/React.createElement("div", {
     className: "wrap settle"
   }, /*#__PURE__*/React.createElement("h2", {
@@ -2970,7 +3085,7 @@ function Settings({
       fontSize: 14,
       margin: '6px 0 10px'
     }
-  }, "The free translations work with no setup. NLT, NKJV, and ESV unlock once you connect a free API.Bible key below."), /*#__PURE__*/React.createElement("select", {
+  }, "NKJV, NLT, and MSG are included automatically — no signup needed. The World English Bible and King James Version are always free too. Pick whichever you'd like to read in."), /*#__PURE__*/React.createElement("select", {
     value: s.translation,
     onChange: e => saveSettings({
       translation: e.target.value
@@ -2995,7 +3110,16 @@ function Settings({
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"
-  }, "Unlock NLT / NKJV / ESV"), /*#__PURE__*/React.createElement("p", {
+  }, "Using your own Bible key"), !showOwnKey ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+    className: "serif muted",
+    style: {
+      fontSize: 14,
+      margin: '6px 0 10px'
+    }
+  }, "Translations are already unlocked for you through a shared license, so this is only for anyone who'd rather use their own."), /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost sm",
+    onClick: () => setShowOwnKey(true)
+  }, "Use my own key instead")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
     className: "serif muted",
     style: {
       fontSize: 14,
@@ -3020,21 +3144,25 @@ function Settings({
       fontSize: 13,
       marginTop: 8
     }
-  }, s.bibles.length, " translations available on this key.")), /*#__PURE__*/React.createElement("div", {
+  }, s.bibles.length, " translations available on this key."))), /*#__PURE__*/React.createElement("div", {
     className: "card",
     style: {
       padding: 20,
-      marginBottom: 16
+      marginBottom: 16,
+      borderColor: 'var(--gilt-2)'
     }
   }, /*#__PURE__*/React.createElement("div", {
-    className: "eyebrow"
+    className: "eyebrow",
+    style: {
+      color: 'var(--gilt)'
+    }
   }, "Unlock the living companion"), /*#__PURE__*/React.createElement("p", {
     className: "serif muted",
     style: {
       fontSize: 14,
       margin: '6px 0 10px'
     }
-  }, "Add an Anthropic API key to get live context, reflection questions tuned to how you meet God, and journey reflections. Without it, everything still works with thoughtful built-in prompts. Your key stays on your device."), /*#__PURE__*/React.createElement("input", {
+  }, "This is the difference-maker. Add your own Anthropic API key to get live historical context, reflection questions tuned to how you meet God, and a real journey reflection over time. Without it, the app leans on thoughtful built-in prompts — good, but not personal. Your key stays on your device."), /*#__PURE__*/React.createElement("input", {
     type: "text",
     value: aiKey,
     onChange: e => setAiKey(e.target.value),
@@ -3229,6 +3357,7 @@ function App() {
   const [toastMsg, setToastMsg] = useState('');
   const [loaded, setLoaded] = useState(!HAS_GAS);
   const [syncStatus, setSyncStatus] = useState('idle'); // idle|saving|saved|offline
+  const [aiNudgeDismissed, setAiNudgeDismissed] = useState(false);
   const saveTimer = useRef(null);
   useEffect(() => {
     // pull remote copy once on mount (GAS deployment only)
@@ -3346,7 +3475,9 @@ function App() {
   }, l))))), view === 'home' && /*#__PURE__*/React.createElement(Home, {
     db: db,
     go: go,
-    startEncounter: startEncounter
+    startEncounter: startEncounter,
+    showAiNudge: !db.settings.aiKey && !aiNudgeDismissed,
+    onDismissNudge: () => setAiNudgeDismissed(true)
   }), view === 'meet' && /*#__PURE__*/React.createElement(MeetPicker, {
     startEncounter: startEncounter
   }), view === 'analog' && /*#__PURE__*/React.createElement(AnalogPicker, {
