@@ -765,6 +765,8 @@ function blank() {
     welcomed: false,
     plan: null,
     seen: {},
+    friends: {},
+    customFriends: [],
     settings: {
       translation: DEFAULT_TRANSLATION,
       bibleKey: DEFAULT_BIBLE_KEY,
@@ -934,7 +936,7 @@ function guardSystem(profile) {
   const stages = Array.isArray(d.lifeStage) ? d.lifeStage : d.lifeStage ? [d.lifeStage] : [];
   const parent = stages.some(s => /Raising young kids|Parent of grown kids|Empty nest/.test(s)) || d.parent === 'yes';
   const age = d.ageBand && d.ageBand !== 'Prefer not to say' ? ', in her ' + d.ageBand : '';
-  return `You are a warm, humble Bible-study companion inside a personal devotional app. You are not an authority and never pronounce doctrine as settled; you point back to Scripture, offer perspectives, and encourage the reader's own discernment and their pastor and community. You respect the reader's own faith tradition${d.tradition ? ` (${d.tradition})` : ''} rather than importing another. You are never a substitute for the Holy Spirit, prayer, or people. Keep a gentle, literate, non-saccharine tone. Be concise.
+  return `You are a warm, humble Bible-study companion inside a personal devotional app. You are a companion on the road (Luke 24), not a lecturer: lead with the heart, and help her MEET God in the text, not merely learn about it. Facts and history serve the encounter — never replace it. You are not an authority and never pronounce doctrine as settled; you point back to Scripture, offer perspectives, and encourage the reader's own discernment and their pastor and community. You respect the reader's own faith tradition${d.tradition ? ` (${d.tradition})` : ''} rather than importing another. You are never a substitute for the Holy Spirit, prayer, or people. Keep a gentle, literate, non-saccharine tone. Be concise.
 Reader context — meet her where she is: ${stages.join(', ') || 'unspecified life stage'}${parent ? ' (a parent)' : ''}${age}. Spiritual temperament (Sacred Pathways): ${path || 'unknown'}. Spiritual gifts: ${gifts || 'unknown'}. Shape reflection toward how she connects with God, but don't name the framework unless asked.`;
 }
 
@@ -969,11 +971,365 @@ function matchMoment(text) {
 }
 async function choosePassageAI(settings, profile, struggle) {
   const sys = guardSystem(profile) + "\nYou are choosing one Scripture passage that meets the reader where she is right now.";
-  const u = `She wrote: "${struggle}"\nChoose ONE well-known Bible passage (a handful of verses she can sit with, not an entire long chapter) that genuinely speaks to this. Respond with ONLY the reference in the form "Book Chapter:Verses" — for example "Isaiah 40:28-31" or "Psalm 139:1-14". Nothing else.`;
+  const u = `She wrote: "${struggle}"\nChoose ONE well-known Bible passage (a handful of verses she can sit with, not an entire long chapter) that genuinely speaks to this. STRONGLY PREFER A NARRATIVE SCENE — a real person meeting God in a moment (David in the cave, Hagar seen in the desert, Peter sinking, Ruth in the field, the woman reaching for the hem) — over an epistle or proverb, unless her words clearly call for direct teaching. People meet God in people. Respond with ONLY the reference in the form "Book Chapter:Verses" — for example "1 Samuel 16:6-13" or "Matthew 14:25-33". Nothing else.`;
   const out = await callClaude(settings, sys, u);
   const ref = (out || '').trim().split('\n')[0].replace(/^["'\s]+|["'\.\s]+$/g, '').trim();
   if (parseRef(ref)) return ref;
   throw new Error('unrecognized reference');
+}
+
+/* ============ Bible friends ============ */
+const FRIENDS = [{
+  id: 'david',
+  name: 'David',
+  tagline: 'shepherd, sinner, singer — a heart after God',
+  scenes: [{
+    ref: '1 Samuel 16:6-13',
+    title: 'The one nobody sent for',
+    note: 'Seven brothers pass by; the youngest is out with the sheep, forgotten. God tells Samuel the thing we all need to hear: people look at the outside, but the Lord looks at the heart.'
+  }, {
+    ref: '1 Samuel 17:41-50',
+    title: 'Facing the giant',
+    note: 'David runs toward what everyone else fled — not because he is fearless, but because he remembers: the lion, the bear, the God who was there both times.'
+  }, {
+    ref: 'Psalms 57:1-8',
+    title: 'Singing in the cave',
+    note: 'Hunted and hiding, David writes a song. Fear and worship live in the same breath here: "in the shadow of your wings I will take refuge."'
+  }, {
+    ref: 'Psalms 51:1-12',
+    title: 'When he fell',
+    note: 'After his worst failure, David does not hide from God — he runs to Him with the whole mess and asks to be made new. Grace meets him there.'
+  }, {
+    ref: '2 Samuel 9:1-11',
+    title: 'A seat at the table',
+    note: 'David seeks out the broken grandson of his enemy just to show him kindness — a picture of the grace that seats us, limps and all, at the King\u2019s table.'
+  }]
+}, {
+  id: 'ruth',
+  name: 'Ruth',
+  tagline: 'loyal love in a season of loss',
+  scenes: [{
+    ref: 'Ruth 1:8-18',
+    title: 'Choosing to stay',
+    note: 'In the wreckage of grief, Ruth binds herself to Naomi and to Naomi\u2019s God: "where you go, I will go." Love that stays is where her story with God begins.'
+  }, {
+    ref: 'Ruth 2:8-16',
+    title: 'Seen in the field',
+    note: 'A foreign widow gleaning leftovers is noticed, protected, and blessed. God\u2019s provision so often arrives looking like someone\u2019s ordinary kindness.'
+  }, {
+    ref: 'Ruth 4:13-17',
+    title: 'Emptiness made full',
+    note: 'The woman who arrived with nothing becomes great-grandmother to a king. God had been quietly writing redemption into every ordinary day.'
+  }]
+}, {
+  id: 'peter',
+  name: 'Peter',
+  tagline: 'bold, broken, and brought back',
+  scenes: [{
+    ref: 'Luke 5:1-11',
+    title: 'Leave the nets',
+    note: 'After a night of catching nothing, Jesus steps into Peter\u2019s boat — his workplace, his failure — and calls him from there. He still meets us in the middle of our ordinary.'
+  }, {
+    ref: 'Matthew 14:25-33',
+    title: 'Sinking, and caught',
+    note: 'Peter walks, wavers, sinks — and "immediately Jesus stretched out his hand." Notice how fast the catch comes. This story is less about Peter\u2019s faith than about the hand.'
+  }, {
+    ref: 'Luke 22:54-62',
+    title: 'The rooster crowed',
+    note: 'At his lowest, Peter fails the One he loves — and the Lord turns and looks at him. Not a glare; a look that would one day become breakfast on a beach.'
+  }, {
+    ref: 'John 21:15-17',
+    title: 'Breakfast on the shore',
+    note: 'Three denials, three questions, three restorations. Jesus does not shame Peter back — He feeds him, asks about love, and gives him work to do.'
+  }]
+}, {
+  id: 'hannah',
+  name: 'Hannah',
+  tagline: 'prayer when the heart is heavy',
+  scenes: [{
+    ref: '1 Samuel 1:9-18',
+    title: 'Pouring out her soul',
+    note: 'Grief too deep for words, misread even by the priest. Hannah prays anyway — and leaves before anything has changed, her face no longer sad. Being heard came first.'
+  }, {
+    ref: '1 Samuel 1:24-28',
+    title: 'Open hands',
+    note: 'The answer to her prayer, she gives back to God. Hannah shows us what it means to hold even our dearest answers with open hands.'
+  }, {
+    ref: '1 Samuel 2:1-8',
+    title: 'Her song',
+    note: 'The once-silent weeper sings. Hannah\u2019s joy is not only about Samuel — it is about who God showed Himself to be while she waited.'
+  }]
+}, {
+  id: 'elijah',
+  name: 'Elijah',
+  tagline: 'mighty, weary, met by a whisper',
+  scenes: [{
+    ref: '1 Kings 17:2-6',
+    title: 'Fed by ravens',
+    note: 'Before the famous mountain, a hidden brook. God provides for Elijah in obscurity — morning and evening, bread and meat — long before anyone is watching.'
+  }, {
+    ref: '1 Kings 18:36-39',
+    title: 'Fire from heaven',
+    note: 'One quiet prayer against four hundred fifty shouting prophets. God answers, and a wavering people fall on their faces: "The Lord, He is God."'
+  }, {
+    ref: '1 Kings 19:3-9',
+    title: 'Under the broom tree',
+    note: 'Right after his greatest victory, Elijah collapses and asks to die. God\u2019s first response is not a sermon — it is sleep, warm bread, and a gentle touch. Twice.'
+  }, {
+    ref: '1 Kings 19:11-13',
+    title: 'The gentle whisper',
+    note: 'Not in the wind, not in the earthquake, not in the fire — the Lord comes to His worn-out servant in a low whisper. Sometimes that is how He still comes.'
+  }]
+}, {
+  id: 'joseph',
+  name: 'Joseph',
+  tagline: 'betrayed, kept, and meant for good',
+  scenes: [{
+    ref: 'Genesis 37:23-28',
+    title: 'Thrown in the pit',
+    note: 'Betrayed by his own brothers, stripped and sold. The pit is real, and Scripture does not rush past it. Neither does God — He goes into it with him.'
+  }, {
+    ref: 'Genesis 39:20-23',
+    title: 'Faithful in prison',
+    note: '"The Lord was with Joseph" — in the prison, of all places. God\u2019s presence is not proof that nothing is wrong; it is the promise that we are not alone in it.'
+  }, {
+    ref: 'Genesis 45:4-8',
+    title: 'The reveal',
+    note: 'Face to face with the brothers who broke him, Joseph sees a bigger hand at work: "God sent me before you to preserve life." Providence reframes the pain.'
+  }, {
+    ref: 'Genesis 50:15-21',
+    title: 'Meant for good',
+    note: '"You meant evil against me, but God meant it for good." Joseph\u2019s forgiveness flows from a long view of God\u2019s faithfulness — and it frees everyone, including him.'
+  }]
+}, {
+  id: 'moses',
+  name: 'Moses',
+  tagline: 'slow of speech, sent anyway',
+  scenes: [{
+    ref: 'Exodus 3:1-12',
+    title: 'The bush that burned',
+    note: 'An ordinary workday, an unremarkable hillside — and a bush on fire with the presence of God. Moses\u2019 first question is ours too: "Who am I?" God\u2019s answer is not a compliment; it is a promise: "I will be with you."'
+  }, {
+    ref: 'Exodus 14:10-16',
+    title: 'Trapped at the sea',
+    note: 'Pharaoh behind, water ahead, a people panicking. Moses tells them to stand still and see — and God tells him to move forward. Sometimes faith is both at once: still heart, moving feet.'
+  }, {
+    ref: 'Exodus 33:12-17',
+    title: 'Your presence, or nothing',
+    note: 'Offered success without closeness, Moses refuses: "If your presence doesn\u2019t go with me, don\u2019t send us up from here." He would rather have God than the win — a prayer that reshapes what we ask for.'
+  }]
+}, {
+  id: 'esther',
+  name: 'Esther',
+  tagline: 'courage that trembles and goes anyway',
+  scenes: [{
+    ref: 'Esther 4:10-16',
+    title: 'For such a time as this',
+    note: 'Esther is afraid, and says so — approaching the king uninvited could cost her life. Mordecai\u2019s words reframe her whole story: maybe every ordinary step led here. Courage begins with "if I perish, I perish."'
+  }, {
+    ref: 'Esther 5:1-3',
+    title: 'The third day',
+    note: 'She fasts, dresses, and stands in the inner court where she is not allowed. The scepter extends. God\u2019s name is never mentioned in her book — yet His hand is on every hinge of this door.'
+  }, {
+    ref: 'Esther 7:1-6',
+    title: 'Speaking at last',
+    note: 'At the second banquet she finally says the dangerous thing out loud and pleads for her people. Some words can only be spoken after long obedience in secret — and God had her ready.'
+  }]
+}, {
+  id: 'jonah',
+  name: 'Jonah',
+  tagline: 'the runner God would not give up on',
+  scenes: [{
+    ref: 'Jonah 1:1-6',
+    title: 'Running the other way',
+    note: 'Told to go east, Jonah books passage west and falls asleep in the storm his running caused. It is strangely comforting: God\u2019s call does not expire because we flee it.'
+  }, {
+    ref: 'Jonah 2:1-9',
+    title: 'Prayer from the deep',
+    note: 'From inside the fish — as low as a person can go — Jonah prays, and is heard. There is no depth beneath the reach of God: "You brought my life up from the pit."'
+  }, {
+    ref: 'Jonah 4:5-11',
+    title: 'The gentle argument',
+    note: 'The story ends with God reasoning tenderly with His sulking prophet under a withered vine. He does not crush Jonah\u2019s anger; He questions it, kindly. He does the same with ours.'
+  }]
+}, {
+  id: 'mary',
+  name: 'Mary of Bethany',
+  tagline: 'the one who sat close',
+  scenes: [{
+    ref: 'Luke 10:38-42',
+    title: 'The better part',
+    note: 'While the house spins with preparation, Mary sits at Jesus\u2019 feet — a disciple\u2019s place a woman was not expected to take. Jesus defends her: presence over performance. One thing is needed.'
+  }, {
+    ref: 'John 11:28-35',
+    title: 'Jesus wept with her',
+    note: 'Mary falls at His feet with the same words as her sister — but with her, Jesus does not give a sermon. He weeps. He knows what He is about to do, and still He cries with her first.'
+  }, {
+    ref: 'John 12:1-8',
+    title: 'The poured-out jar',
+    note: 'A year\u2019s wages of perfume, broken open over His feet, wiped with her hair. Extravagant, criticized, undefended — except by Jesus. Love that looks wasteful to the room can be worship to Him.'
+  }]
+}, {
+  id: 'paul',
+  name: 'Paul',
+  tagline: 'grace found him mid-stride',
+  scenes: [{
+    ref: 'Acts 9:1-9',
+    title: 'Stopped on the road',
+    note: 'At the height of his violence, light knocks Saul to the ground and a voice calls his name — twice, gently. Grace interrupts us at our worst, not our best.'
+  }, {
+    ref: 'Acts 16:25-31',
+    title: 'Singing at midnight',
+    note: 'Beaten, chained, and innocent, Paul and Silas sing at midnight — and the other prisoners listen. Worship in the dark opens more doors than the earthquake does.'
+  }, {
+    ref: '2 Corinthians 12:7-10',
+    title: 'The thorn that stayed',
+    note: 'Three times Paul begs for the thorn\u2019s removal; three times the answer goes deeper than removal: "My grace is sufficient for you." Some prayers are answered with Presence instead of relief.'
+  }]
+}];
+const MOOD_MATCH = [[/weary|tired|burn|exhaust|overwhelm/i, ['elijah', 'hannah']], [/grie|loss|died|death|mourn/i, ['mary', 'ruth']], [/afraid|fear|anxio|worry|scared/i, ['david', 'moses']], [/wait|delay|stuck|patien|barren/i, ['hannah', 'joseph']], [/overlook|unseen|forgot|small|invisible/i, ['david', 'ruth']], [/fail|shame|guilt|mess|regret|sin/i, ['peter', 'jonah']], [/start|new|change|begin|moving/i, ['ruth', 'paul']], [/angry|why|doubt|question|frustrat/i, ['jonah', 'elijah']], [/alone|lonel|isolat/i, ['elijah', 'paul']], [/brave|courage|speak|stand/i, ['esther', 'moses']], [/betray|hurt|wrong|unfair/i, ['joseph', 'david']]];
+async function findFriendsAI(settings, profile, text) {
+  const sys = guardSystem(profile);
+  const u = `She wrote about what she is carrying, or the kind of company she needs right now: "${text}"
+
+From the WHOLE Bible, choose exactly 2 people whose real, lived stories meet her in this. Prefer the less-obvious, deeply fitting choice over the famous one when it fits better (think Hagar, Mephibosheth, the widow of Zarephath, Barnabas, Naaman's servant girl — anyone in Scripture is fair game).
+
+Return ONLY valid JSON — no markdown fences, no commentary — in exactly this shape:
+[{"name":"...","tagline":"5-9 words, lowercase, warm","why":"1-2 sentences, second person, why this friend meets her here","scenes":[{"ref":"Book C:V-V","title":"3-5 words","note":"2-3 warm sentences: what happens in this scene, and where God is in it"}]}]
+
+Rules: 3 or 4 scenes per person, in the order they happened. Every ref must be a real passage contained within ONE chapter, formatted like "Genesis 16:6-13" or "1 Kings 19:3-9", using common English book names. The notes speak as a companion, never a lecturer.`;
+  const out = await callClaude(settings, sys, u);
+  const clean = out.replace(/```json|```/g, '').trim();
+  const arr = JSON.parse(clean.slice(clean.indexOf('['), clean.lastIndexOf(']') + 1));
+  return arr.map(f => ({
+    name: String(f.name || '').slice(0, 48),
+    tagline: String(f.tagline || '').slice(0, 90),
+    why: String(f.why || '').slice(0, 320),
+    scenes: (Array.isArray(f.scenes) ? f.scenes : []).filter(s => s && s.ref && parseRef(String(s.ref))).map(s => ({
+      ref: String(s.ref),
+      title: String(s.title || 'A moment').slice(0, 64),
+      note: String(s.note || '').slice(0, 420)
+    }))
+  })).filter(f => f.name && f.scenes.length >= 2).slice(0, 2);
+}
+function MicField({
+  value,
+  onValue,
+  rows,
+  placeholder,
+  style
+}) {
+  const [rec, setRec] = useState(false);
+  const recRef = useRef(null);
+  const baseRef = useRef('');
+  const SR = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition);
+  function toggle() {
+    if (!SR) return;
+    if (rec) {
+      try {
+        recRef.current && recRef.current.stop();
+      } catch (e) {}
+      return;
+    }
+    let r;
+    try {
+      r = new SR();
+    } catch (e) {
+      return;
+    }
+    r.continuous = true;
+    r.interimResults = true;
+    r.lang = 'en-US';
+    baseRef.current = value ? value.replace(/\s+$/, '') + ' ' : '';
+    let finalAdd = '';
+    r.onresult = e => {
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const seg = e.results[i][0].transcript;
+        if (e.results[i].isFinal) finalAdd += seg;else interim += seg;
+      }
+      onValue(baseRef.current + (finalAdd + interim).replace(/\s+/g, ' ').replace(/^\s+/, ''));
+    };
+    r.onerror = () => {
+      setRec(false);
+    };
+    r.onend = () => {
+      setRec(false);
+      recRef.current = null;
+    };
+    recRef.current = r;
+    setRec(true);
+    try {
+      r.start();
+    } catch (e) {
+      setRec(false);
+      recRef.current = null;
+    }
+  }
+  useEffect(() => () => {
+    try {
+      recRef.current && recRef.current.stop();
+    } catch (e) {}
+  }, []);
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'relative',
+      ...(style || {})
+    }
+  }, /*#__PURE__*/React.createElement("textarea", {
+    rows: rows,
+    value: value,
+    placeholder: placeholder,
+    onChange: e => onValue(e.target.value),
+    style: {
+      width: '100%',
+      boxSizing: 'border-box',
+      paddingRight: SR ? 40 : undefined
+    }
+  }), SR && /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: toggle,
+    "aria-label": rec ? 'Stop recording' : 'Speak your answer',
+    title: rec ? 'Tap to stop' : 'Speak instead of typing',
+    style: {
+      position: 'absolute',
+      right: 9,
+      top: 9,
+      width: 30,
+      height: 30,
+      borderRadius: '50%',
+      border: 'none',
+      cursor: 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 0,
+      background: rec ? 'var(--rose)' : 'var(--parchment-2)',
+      color: rec ? '#fff' : 'var(--ink-soft)',
+      boxShadow: rec ? '0 0 0 4px rgba(176,86,77,.18)' : 'none',
+      transition: 'all .2s'
+    }
+  }, /*#__PURE__*/React.createElement("svg", {
+    viewBox: "0 0 24 24",
+    width: "15",
+    height: "15",
+    fill: "currentColor",
+    "aria-hidden": "true"
+  }, /*#__PURE__*/React.createElement("path", {
+    d: "M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3z"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M17 11a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.93V21h2v-3.07A7 7 0 0 0 19 11h-2z"
+  }))), rec && /*#__PURE__*/React.createElement("span", {
+    style: {
+      position: 'absolute',
+      right: 44,
+      top: 15,
+      fontSize: 11,
+      color: 'var(--rose)',
+      fontWeight: 600,
+      pointerEvents: 'none'
+    }
+  }, "listening…"));
 }
 function Passage({
   data
@@ -1715,7 +2071,12 @@ function Home({
     onClick: () => go('analog')
   }, /*#__PURE__*/React.createElement("span", {
     className: "rune"
-  }, "⚲"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("h3", null, "I have my Bible open"), /*#__PURE__*/React.createElement("p", null, "Reading a physical Bible? Type where you landed, and I'll build the reflection around it.")))), db.plan ? /*#__PURE__*/React.createElement(PlanCard, {
+  }, "⚲"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("h3", null, "I have my Bible open"), /*#__PURE__*/React.createElement("p", null, "Reading a physical Bible? Type where you landed, and I'll build the reflection around it."))), /*#__PURE__*/React.createElement("button", {
+    className: "door settle",
+    onClick: () => go('friends')
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "rune"
+  }, "❀"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("h3", null, "Walk with a Bible friend"), /*#__PURE__*/React.createElement("p", null, "Follow a life scene by scene — or tell me what you're carrying, and I'll find who walked it before you.")))), db.plan ? /*#__PURE__*/React.createElement(PlanCard, {
     db: db,
     go: go
   }) : /*#__PURE__*/React.createElement("button", {
@@ -2154,10 +2515,10 @@ function MeetPicker({
     style: {
       fontSize: 16
     }
-  }, "Write it plainly in your own words, and I'll bring you a passage that meets it — or choose a place to begin below. Either way, what you write shapes the reflection and is saved with your entry."), /*#__PURE__*/React.createElement("textarea", {
+  }, "Write it plainly in your own words, and I'll bring you a passage that meets it — or choose a place to begin below. Either way, what you write shapes the reflection and is saved with your entry."), /*#__PURE__*/React.createElement(MicField, {
     rows: 3,
     value: struggle,
-    onChange: e => setStruggle(e.target.value),
+    onValue: setStruggle,
     placeholder: "However it actually is right now…",
     style: {
       marginTop: 12
@@ -2297,7 +2658,7 @@ function Encounter({
   toast,
   go
 }) {
-  const [stage, setStage] = useState(0); // 0 loading,1 enter,2 understand,3 reflect,4 apply,5 respond
+  const [stage, setStage] = useState(0); // 0 loading,1 pray,2 read,3 enter,4 reflect,5 walk,6 respond
   const [passage, setPassage] = useState(null);
   const [story, setStory] = useState(null);
   const [err, setErr] = useState('');
@@ -2306,10 +2667,15 @@ function Encounter({
   const [questions, setQuestions] = useState([]);
   const [answers, setAnswers] = useState(['', '', '', '']);
   const [apply, setApply] = useState('');
+  const [walkWord, setWalkWord] = useState('');
   const [prayer, setPrayer] = useState('');
   const [pickVerse, setPickVerse] = useState(null);
   const struggle = arg && arg.struggle || '';
   const hasAI = !!db.settings.aiKey;
+  const isFriend = mode === 'friend';
+  const friend = isFriend ? [...FRIENDS, ...(db.customFriends || [])].find(f => f.id === arg.friendId) : null;
+  const scene = friend ? friend.scenes[arg.sceneIndex] : null;
+  const sceneCtx = scene ? `${friend.name} — ${scene.title}. ${scene.note}` : story && story.note ? (story.title ? story.title + ' — ' : '') + story.note : '';
   useEffect(() => {
     (async () => {
       try {
@@ -2318,6 +2684,13 @@ function Encounter({
         if (mode === 'story') {
           seed = SEED.stories.find(s => s.id === arg.storyId);
           ref = seed.reference;
+        } else if (mode === 'friend') {
+          ref = scene.ref;
+          seed = {
+            title: friend.name + ' \u00b7 ' + scene.title,
+            note: scene.note,
+            reference: scene.ref
+          };
         } else if (mode === 'surprise') {
           ref = pickSurprise(db.seen);
         } else if (mode === 'meet_text') {
@@ -2336,7 +2709,7 @@ function Encounter({
         setStory(seed);
         let data;
         // use bundled seed text if available & translation is public-domain web
-        if (seed && db.settings.translation === 'web') {
+        if (seed && seed.verses && db.settings.translation === 'web') {
           data = {
             reference: seed.reference,
             translation: 'World English Bible',
@@ -2371,7 +2744,7 @@ function Encounter({
       try {
         const sys = guardSystem(db.profile);
         const txt = passage.verses ? passage.verses.map(v => v.t).join(' ') : passage.raw;
-        const u = `Passage: ${passage.reference}\n"${txt}"\n\nGive brief "Understand" background to deepen this reading: the setting and who's involved, one or two historical/cultural notes, and one key word or phrase (with its sense in the original language if illuminating). 130 words max, warm and plain. No headers.`;
+        const u = `Passage: ${passage.reference}\n"${txt}"\n${sceneCtx ? `Scene: ${sceneCtx}\n` : ''}${struggle ? `She is carrying: "${struggle}"\n` : ''}\nBring her INSIDE this passage. In 110-140 words, speaking to her in the second person where it feels natural: help her see and stand in the moment — the setting, what the people there were feeling, what it cost, what God was doing. Weave in one or two historical or original-language details ONLY where they deepen the encounter, never as a lecture. End with one sentence that gently connects this moment to hers. Warm, vivid, plain. No headers, no list.`;
         setUnderstand(await callClaude(db.settings, sys, u));
       } catch (e) {
         setUnderstand('__ERR__' + e.message);
@@ -2386,7 +2759,7 @@ function Encounter({
         try {
           const sys = guardSystem(db.profile);
           const txt = passage.verses ? passage.verses.map(v => v.t).join(' ') : passage.raw;
-          const u = `Passage: ${passage.reference}\n"${txt}"\n${struggle ? `She wrote that she is carrying: "${struggle}".` : ''}\nOffer exactly 3 short reflection questions, tuned to how she meets God, that move from observing the text toward her heart. Return only the 3 questions, one per line, no numbering.`;
+          const u = `Passage: ${passage.reference}\n"${txt}"\n${sceneCtx ? `Scene: ${sceneCtx}\n` : ''}${struggle ? `She wrote that she is carrying: "${struggle}".\n` : ''}Offer exactly 3 short reflection questions addressed directly to her, in the second person — questions for the heart, not analysis. The FIRST must place her inside this story or scene ("Where are you in this story…", "When have you stood where they stood…"). Then move toward her walk with God right now. Return only the 3 questions, one per line, no numbering.`;
           const out = await callClaude(db.settings, sys, u);
           setQuestions(out.split('\n').map(x => x.replace(/^[\d\.\-\)\s]+/, '').trim()).filter(Boolean).slice(0, 3));
         } catch (e) {
@@ -2396,10 +2769,22 @@ function Encounter({
     }
   }
   function staticQuestions() {
-    const base = ["What word or phrase catches your attention here, and why?", "What does this reveal about who God is?"];
+    const base = ["Where are you inside this story — whose place do you find yourself standing in?", "What does this show you about how God draws near — and where do you need Him near right now?"];
     const top = db.profile.pathway && db.profile.pathway.top && db.profile.pathway.top[0];
-    base.push(top && PATH_REFLECT[top] ? PATH_REFLECT[top] : "Where do you see yourself in this passage?");
+    base.push(top && PATH_REFLECT[top] ? PATH_REFLECT[top] : "What is one thing from this you want to carry close to your heart today?");
     return base;
+  }
+  async function goWalk() {
+    setStage(5);
+    if (hasAI && !walkWord) {
+      try {
+        const sys = guardSystem(db.profile);
+        const txt = passage.verses ? passage.verses.map(v => v.t).join(' ') : passage.raw;
+        const u = `Passage: ${passage.reference}\n"${txt}"\n${struggle ? `She is carrying: "${struggle}"\n` : ''}In the spirit and words of THIS passage only, write ONE tender sentence (under 32 words) of what Jesus might be saying to her right now — faithful to the text, gentle, no commands, no promises beyond what the passage itself holds. Return only the sentence, no quotation marks.`;
+        const w = (await callClaude(db.settings, sys, u)).trim().replace(/^["']+|["']+$/g, '');
+        if (w && w.length < 260) setWalkWord(w);
+      } catch (e) {/* the static invitation carries the moment */}
+    }
   }
   function commit() {
     const now = new Date().toISOString();
@@ -2409,7 +2794,7 @@ function Encounter({
       date: now,
       reference: passage.reference,
       translation: passage.translation,
-      moment: struggle || (story ? momentLabel(story.moment) : ''),
+      moment: isFriend && friend && scene ? friend.name + ': ' + scene.title : struggle || (story ? momentLabel(story.moment) : ''),
       understand: understand && !understand.startsWith('__ERR__') ? understand : '',
       reflection: reflectText,
       apply,
@@ -2419,6 +2804,14 @@ function Encounter({
       ...db
     };
     newDb.entries = [entry, ...db.entries];
+    if (isFriend && friend) {
+      const fset = new Set(db.friends && db.friends[friend.id] || []);
+      fset.add(arg.sceneIndex);
+      newDb.friends = {
+        ...(db.friends || {}),
+        [friend.id]: [...fset]
+      };
+    }
     if (pickVerse != null && passage.verses) {
       const v = passage.verses[pickVerse];
       newDb.verses = [{
@@ -2480,7 +2873,7 @@ function Encounter({
       fontSize: 16
     }
   }, "Turning to the page…"));
-  const STEPS = ['Pray', 'Enter', 'Understand', 'Reflect', 'Apply', 'Respond'];
+  const STEPS = ['Pray', 'Read', 'Enter', 'Reflect', 'Walk', 'Respond'];
   return /*#__PURE__*/React.createElement("div", {
     className: "wrap"
   }, /*#__PURE__*/React.createElement("div", {
@@ -2537,16 +2930,16 @@ function Encounter({
   }, struggle)), /*#__PURE__*/React.createElement("button", {
     className: "btn gilt",
     onClick: goUnderstand
-  }, "Understand it →")), stage === 3 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+  }, "Step into the story →")), stage === 3 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "rule"
   }), /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"
-  }, "Understand"), uLoading && /*#__PURE__*/React.createElement("p", {
+  }, "Enter the story"), uLoading && /*#__PURE__*/React.createElement("p", {
     className: "serif muted settle",
     style: {
       fontSize: 16
     }
-  }, "Reading the context for you…"), !uLoading && understand && !understand.startsWith('__ERR__') && /*#__PURE__*/React.createElement("p", {
+  }, "Walking you into the scene…"), !uLoading && understand && !understand.startsWith('__ERR__') && /*#__PURE__*/React.createElement("p", {
     className: "serif settle",
     style: {
       fontSize: 16.5,
@@ -2555,7 +2948,7 @@ function Encounter({
     }
   }, understand), !uLoading && understand.startsWith('__ERR__') && /*#__PURE__*/React.createElement("div", {
     className: "keyhint"
-  }, "Live background needs an Anthropic key (Settings). ", understand.slice(7)), !uLoading && !understand && story && /*#__PURE__*/React.createElement("p", {
+  }, "The living companion needs an Anthropic key (Settings). ", understand.slice(7)), !uLoading && !understand && story && /*#__PURE__*/React.createElement("p", {
     className: "serif settle",
     style: {
       fontSize: 16.5,
@@ -2564,7 +2957,7 @@ function Encounter({
     }
   }, story.note), !uLoading && !understand && !story && !hasAI && /*#__PURE__*/React.createElement("div", {
     className: "keyhint"
-  }, "Observe first: who is speaking, to whom, and what just happened before this? Add an Anthropic key in Settings to get live historical and language background here."), /*#__PURE__*/React.createElement("div", {
+  }, "Read it again slowly, from inside the scene: who is standing there, what are they carrying, and what does God do? With an Anthropic key (Settings), I'll walk you into this moment with living detail."), /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 16
     }
@@ -2585,12 +2978,12 @@ function Encounter({
     key: i
   }, /*#__PURE__*/React.createElement("p", {
     className: "q"
-  }, q), /*#__PURE__*/React.createElement("textarea", {
+  }, q), /*#__PURE__*/React.createElement(MicField, {
     rows: 2,
     value: answers[i] || '',
-    onChange: e => {
+    onValue: v => {
       const a = [...answers];
-      a[i] = e.target.value;
+      a[i] = v;
       setAnswers(a);
     },
     placeholder: "Take your time…"
@@ -2600,21 +2993,47 @@ function Encounter({
     }
   }, /*#__PURE__*/React.createElement("button", {
     className: "btn gilt",
-    onClick: () => setStage(5)
-  }, "Apply →"))), stage === 5 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    onClick: goWalk
+  }, "Walk with Him →"))), stage === 5 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "rule"
   }), /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"
-  }, "Apply"), /*#__PURE__*/React.createElement("p", {
-    className: "q",
+  }, "Walk with Him"), walkWord && /*#__PURE__*/React.createElement("div", {
+    className: "settle",
     style: {
+      margin: '8px 0 2px'
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "serif muted",
+    style: {
+      fontSize: 13,
+      margin: '0 0 5px'
+    }
+  }, "Drawn from this passage — a word He might be speaking over you:"), /*#__PURE__*/React.createElement("p", {
+    className: "serif",
+    style: {
+      fontSize: 17,
+      lineHeight: 1.6,
+      fontStyle: 'italic',
+      color: 'var(--ink)',
+      margin: 0
+    }
+  }, "“", walkWord, "”")), !walkWord && !hasAI && /*#__PURE__*/React.createElement("p", {
+    className: "serif muted settle",
+    style: {
+      fontSize: 14.5,
       marginTop: 6
     }
-  }, struggle ? `How does this meet what you're carrying — "${struggle}"?` : 'How might you live this out in the next day or two?'), /*#__PURE__*/React.createElement("textarea", {
+  }, "The same God who moved in this passage is beside you as you read it. He is not far off."), /*#__PURE__*/React.createElement("p", {
+    className: "q",
+    style: {
+      marginTop: 12
+    }
+  }, struggle ? "You've named what you're carrying. What do you want to say to Jesus about it — plainly, like a friend beside you?" : "If Jesus were sitting beside you as you read this — and He is — what would you want to say to Him?"), /*#__PURE__*/React.createElement(MicField, {
     rows: 4,
     value: apply,
-    onChange: e => setApply(e.target.value),
-    placeholder: "One honest, doable step or shift…"
+    onValue: setApply,
+    placeholder: "Speak plainly — He's listening…"
   }), /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 16
@@ -2650,10 +3069,10 @@ function Encounter({
       fontSize: 14,
       margin: '4px 0 8px'
     }
-  }, "Anything you want to bring to God? It goes to your prayer log, where you can later mark it answered."), /*#__PURE__*/React.createElement("textarea", {
+  }, "Anything you want to bring to God? It goes to your prayer log, where you can later mark it answered."), /*#__PURE__*/React.createElement(MicField, {
     rows: 3,
     value: prayer,
-    onChange: e => setPrayer(e.target.value),
+    onValue: setPrayer,
     placeholder: "Lord…"
   }), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -2678,6 +3097,288 @@ function pickSurprise(seen) {
   });
   const pool = fresh.length ? fresh : SURPRISE;
   return pool[Math.floor(Math.random() * pool.length)];
+}
+
+/* ============ Bible Friends ============ */
+function FriendsView({
+  db,
+  save,
+  toast,
+  go,
+  startEncounter
+}) {
+  const [sel, setSel] = useState(null);
+  const [q, setQ] = useState('');
+  const [finding, setFinding] = useState(false);
+  const [found, setFound] = useState(null);
+  const [findErr, setFindErr] = useState('');
+  const prog = db.friends || {};
+  const hasAI = !!db.settings.aiKey;
+  const allFriends = [...FRIENDS, ...(db.customFriends || [])];
+  const MOODS = ['Weary', 'Grieving', 'Afraid', 'Waiting', 'Overlooked', 'Ashamed', 'Starting over'];
+  async function onFind() {
+    const text = q.trim();
+    if (!text) return;
+    setFindErr('');
+    setFound(null);
+    if (hasAI) {
+      setFinding(true);
+      try {
+        const res = await findFriendsAI(db.settings, db.profile, text);
+        if (res.length === 0) setFindErr("I couldn't shape that into friends just now — try a few more words about what you're carrying.");else setFound({
+          ai: res
+        });
+      } catch (e) {
+        setFindErr('Could not search right now — ' + e.message);
+      }
+      setFinding(false);
+    } else {
+      const hits = [];
+      MOOD_MATCH.forEach(([re, ids]) => {
+        if (re.test(text)) ids.forEach(id => {
+          if (!hits.includes(id)) hits.push(id);
+        });
+      });
+      setFound({
+        builtin: hits.slice(0, 3)
+      });
+    }
+  }
+  function adopt(f) {
+    const id = 'c' + Date.now();
+    save({
+      ...db,
+      customFriends: [...(db.customFriends || []), {
+        id,
+        custom: true,
+        name: f.name,
+        tagline: f.tagline,
+        why: f.why,
+        scenes: f.scenes
+      }]
+    });
+    toast(f.name + ' joined your friends');
+    setFound(null);
+    setQ('');
+    setSel(id);
+  }
+  if (sel) {
+    const f = allFriends.find(x => x.id === sel);
+    if (!f) {
+      setSel(null);
+      return null;
+    }
+    const done = new Set(prog[f.id] || []);
+    return /*#__PURE__*/React.createElement("div", {
+      className: "wrap settle"
+    }, /*#__PURE__*/React.createElement("button", {
+      className: "btn ghost sm",
+      onClick: () => setSel(null)
+    }, "← All friends"), /*#__PURE__*/React.createElement("h2", {
+      className: "display",
+      style: {
+        fontSize: 26,
+        fontWeight: 600,
+        margin: '16px 0 2px'
+      }
+    }, f.name), /*#__PURE__*/React.createElement("p", {
+      className: "serif muted",
+      style: {
+        fontSize: 15,
+        margin: '0 0 6px'
+      }
+    }, f.tagline), f.why && /*#__PURE__*/React.createElement("p", {
+      className: "serif",
+      style: {
+        fontSize: 14.5,
+        color: 'var(--gilt)',
+        margin: '0 0 14px'
+      }
+    }, f.why), !f.why && /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginBottom: 14
+      }
+    }), f.scenes.map((sc, i) => /*#__PURE__*/React.createElement("button", {
+      key: i,
+      className: "door settle",
+      style: {
+        width: '100%',
+        textAlign: 'left',
+        marginBottom: 10
+      },
+      onClick: () => startEncounter('friend', {
+        friendId: f.id,
+        sceneIndex: i
+      })
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "rune",
+      style: {
+        color: done.has(i) ? 'var(--gilt)' : 'var(--vespers-soft)'
+      }
+    }, done.has(i) ? '\u2713' : i + 1), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("h3", null, sc.title), /*#__PURE__*/React.createElement("p", null, sc.ref, done.has(i) ? ' \u00b7 walked together' : '')))), /*#__PURE__*/React.createElement("p", {
+      className: "serif muted",
+      style: {
+        fontSize: 13.5,
+        marginTop: 10
+      }
+    }, "Take the scenes in order or wander — each one is a full time with God, and your place here is always kept."), f.custom && /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginTop: 14
+      }
+    }, /*#__PURE__*/React.createElement("button", {
+      className: "btn ghost sm",
+      onClick: () => {
+        save({
+          ...db,
+          customFriends: (db.customFriends || []).filter(x => x.id !== f.id)
+        });
+        setSel(null);
+        toast(f.name + ' released');
+      }
+    }, "Release this friend")));
+  }
+  return /*#__PURE__*/React.createElement("div", {
+    className: "wrap settle"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "greet settle"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "eyebrow"
+  }, "Bible friends"), /*#__PURE__*/React.createElement("h2", {
+    style: {
+      fontSize: 24
+    }
+  }, "People Like Us, Walking with God"), /*#__PURE__*/React.createElement("p", {
+    className: "serif muted",
+    style: {
+      fontSize: 15,
+      marginTop: 8
+    }
+  }, "Follow a life a scene at a time: the fears, the failures, and the God who never left. Learn to spot Him in your own story by watching Him in theirs.")), /*#__PURE__*/React.createElement("div", {
+    className: "card",
+    style: {
+      padding: '18px 18px 16px',
+      marginBottom: 18
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "eyebrow",
+    style: {
+      color: 'var(--gilt)'
+    }
+  }, "Who do you need beside you?"), /*#__PURE__*/React.createElement("p", {
+    className: "serif muted",
+    style: {
+      fontSize: 13.5,
+      margin: '5px 0 10px'
+    }
+  }, "Name a mood, or tell me what you're living — ", hasAI ? "I'll search the whole of Scripture for the friends who walked it first." : "I'll point you to the friends here who walked it first."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 6,
+      flexWrap: 'wrap',
+      marginBottom: 10
+    }
+  }, MOODS.map(m => /*#__PURE__*/React.createElement("button", {
+    key: m,
+    onClick: () => setQ(m),
+    style: {
+      background: q === m ? 'rgba(25,130,123,.15)' : 'var(--parchment-2)',
+      border: '1px solid ' + (q === m ? 'var(--gilt-2)' : 'var(--line)'),
+      borderRadius: 16,
+      padding: '5px 11px',
+      fontSize: 12.5,
+      color: q === m ? 'var(--gilt)' : 'var(--ink-soft)',
+      cursor: 'pointer',
+      fontFamily: "'Inter',sans-serif"
+    }
+  }, m))), /*#__PURE__*/React.createElement(MicField, {
+    rows: 2,
+    value: q,
+    onValue: setQ,
+    placeholder: "Weary… waiting on an answer… starting over… or tell me the whole thing."
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 10
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn gilt sm",
+    disabled: finding,
+    onClick: onFind
+  }, finding ? 'Searching Scripture…' : 'Find my friend')), findErr && /*#__PURE__*/React.createElement("p", {
+    className: "serif",
+    style: {
+      fontSize: 13.5,
+      color: 'var(--rose)',
+      marginTop: 10
+    }
+  }, findErr), found && found.ai && found.ai.map((f, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    className: "settle",
+    style: {
+      border: '1px solid var(--gilt-2)',
+      borderRadius: 12,
+      padding: '14px 15px',
+      marginTop: 12,
+      background: 'rgba(25,130,123,.05)'
+    }
+  }, /*#__PURE__*/React.createElement("b", {
+    className: "display",
+    style: {
+      fontSize: 17
+    }
+  }, f.name), /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      fontSize: 13,
+      margin: '1px 0 6px'
+    }
+  }, f.tagline, " · ", f.scenes.length, " scenes"), /*#__PURE__*/React.createElement("p", {
+    className: "serif",
+    style: {
+      fontSize: 14.5,
+      lineHeight: 1.55,
+      margin: '0 0 10px'
+    }
+  }, f.why), /*#__PURE__*/React.createElement("button", {
+    className: "btn gilt sm",
+    onClick: () => adopt(f)
+  }, "Walk with ", f.name))), found && found.builtin && (found.builtin.length > 0 ? /*#__PURE__*/React.createElement("p", {
+    className: "serif",
+    style: {
+      fontSize: 14,
+      marginTop: 12,
+      color: 'var(--ink)'
+    }
+  }, "These friends below walked something like this — ", /*#__PURE__*/React.createElement("b", null, found.builtin.map(id => {
+    const fr = FRIENDS.find(x => x.id === id);
+    return fr ? fr.name : '';
+  }).filter(Boolean).join(', ')), ". Start with them.") : /*#__PURE__*/React.createElement("p", {
+    className: "serif muted",
+    style: {
+      fontSize: 14,
+      marginTop: 12
+    }
+  }, "Tell me a little more — a word like weary, waiting, afraid, ashamed…")), !hasAI && /*#__PURE__*/React.createElement("div", {
+    className: "keyhint",
+    style: {
+      marginTop: 12
+    }
+  }, "With an Anthropic key (Settings), I'll search the whole of Scripture — Hagar, Mephibosheth, the widow of Zarephath, anyone — and bring you friends matched to your exact words, with scenes built just for you.")), allFriends.map(f => {
+    const n = (prog[f.id] || []).length;
+    const hl = found && found.builtin && found.builtin.includes(f.id);
+    return /*#__PURE__*/React.createElement("button", {
+      key: f.id,
+      className: "door settle",
+      style: {
+        width: '100%',
+        textAlign: 'left',
+        marginBottom: 10,
+        borderColor: hl ? 'var(--gilt-2)' : undefined
+      },
+      onClick: () => setSel(f.id)
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "rune"
+    }, "❀"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("h3", null, f.name), /*#__PURE__*/React.createElement("p", null, f.tagline, f.custom ? ' \u00b7 found for you' : '', n > 0 ? ` \u00b7 ${n} of ${f.scenes.length} scenes walked` : '')));
+  }));
 }
 
 /* ============ Journal ============ */
@@ -2768,7 +3469,7 @@ function Journal({
       letterSpacing: 1,
       textTransform: 'uppercase'
     }
-  }, "Applied · "), e.apply)))), tab === 'verses' && (db.verses.length === 0 ? /*#__PURE__*/React.createElement(Empty, {
+  }, "Said to Him · "), e.apply)))), tab === 'verses' && (db.verses.length === 0 ? /*#__PURE__*/React.createElement(Empty, {
     text: "Banked verses will live here — the lines that marked you."
   }) : db.verses.map(v => /*#__PURE__*/React.createElement("div", {
     className: "entry",
@@ -3631,6 +4332,12 @@ function App() {
     showAiNudge: !db.settings.aiKey && !aiNudgeDismissed,
     onDismissNudge: () => setAiNudgeDismissed(true)
   }), view === 'meet' && /*#__PURE__*/React.createElement(MeetPicker, {
+    startEncounter: startEncounter
+  }), view === 'friends' && /*#__PURE__*/React.createElement(FriendsView, {
+    db: db,
+    save: save,
+    toast: toast,
+    go: go,
     startEncounter: startEncounter
   }), view === 'analog' && /*#__PURE__*/React.createElement(AnalogPicker, {
     startEncounter: startEncounter
