@@ -802,6 +802,69 @@ function blank() {
     }
   };
 }
+// Union two saved databases so restoring on another device ADDS to what's here
+// rather than wiping it. Keeps the newest of any duplicate, merges progress maps.
+function mergeData(cur, inc) {
+  const c = cur || blank(),
+    i = inc || {};
+  const byId = (a = [], b = []) => {
+    const m = new Map();
+    [...a, ...b].forEach(x => {
+      if (x && x.id) {
+        const p = m.get(x.id);
+        if (!p || x.date && p.date && x.date > p.date) m.set(x.id, x);
+      }
+    });
+    return [...m.values()].sort((x, y) => (y.date || '').localeCompare(x.date || ''));
+  };
+  const mergeSeen = (a = {}, b = {}) => {
+    const o = {
+      ...a
+    };
+    Object.keys(b || {}).forEach(k => {
+      o[k] = [...new Set([...(a[k] || []), ...(b[k] || [])])];
+    });
+    return o;
+  };
+  const mergeFriends = (a = {}, b = {}) => {
+    const o = {
+      ...a
+    };
+    Object.keys(b || {}).forEach(k => {
+      o[k] = [...new Set([...(a[k] || []), ...(b[k] || [])])];
+    });
+    return o;
+  };
+  const customFriends = (() => {
+    const m = new Map();
+    [...(c.customFriends || []), ...(i.customFriends || [])].forEach(f => {
+      if (f && f.id && !m.has(f.id)) m.set(f.id, f);
+    });
+    return [...m.values()];
+  })();
+  // plan: keep whichever is further along (higher index)
+  const planPick = (() => {
+    const cp = c.plan,
+      ip = i.plan;
+    if (!cp) return ip || null;
+    if (!ip) return cp;
+    return (ip.index || 0) > (cp.index || 0) ? ip : cp;
+  })();
+  return {
+    ...c,
+    profile: i.profile && i.profile.onboarded && !c.profile.onboarded ? i.profile : c.profile,
+    entries: byId(c.entries, i.entries),
+    verses: byId(c.verses, i.verses),
+    prayers: byId(c.prayers, i.prayers),
+    seen: mergeSeen(c.seen, i.seen),
+    friends: mergeFriends(c.friends, i.friends),
+    customFriends,
+    recent: [...new Set([...(c.recent || []), ...(i.recent || [])])].slice(0, 12),
+    plan: planPick,
+    welcomed: c.welcomed || i.welcomed,
+    settings: c.settings // keep THIS device's settings (keys, translation, font)
+  };
+}
 
 /* ============ bible fetch ============ */
 const ALIASES = {
@@ -1269,10 +1332,12 @@ function MicField({
   style
 }) {
   const [rec, setRec] = useState(false);
+  const [starting, setStarting] = useState(false);
   const recRef = useRef(null);
   const baseRef = useRef('');
+  const primedRef = useRef(false);
   const SR = !MIC_DISABLED && typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition);
-  function toggle() {
+  async function toggle() {
     if (!SR) return;
     if (rec) {
       try {
@@ -1280,10 +1345,27 @@ function MicField({
       } catch (e) {}
       return;
     }
+    if (starting) return;
+    setStarting(true);
+    // Prime the mic permission FIRST and wait for it to settle, so the recognizer
+    // never starts mid-prompt (the cause of the first-use stall on iOS/Safari).
+    if (!primedRef.current && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true
+        });
+        stream.getTracks().forEach(t => t.stop());
+        primedRef.current = true;
+      } catch (e) {
+        setStarting(false);
+        return;
+      } // denied or unavailable — stay quiet
+    }
     let r;
     try {
       r = new SR();
     } catch (e) {
+      setStarting(false);
       return;
     }
     r.continuous = true;
@@ -1299,18 +1381,24 @@ function MicField({
       }
       onValue(baseRef.current + (finalAdd + interim).replace(/\s+/g, ' ').replace(/^\s+/, ''));
     };
+    r.onstart = () => {
+      setStarting(false);
+      setRec(true);
+    };
     r.onerror = () => {
+      setStarting(false);
       setRec(false);
     };
     r.onend = () => {
+      setStarting(false);
       setRec(false);
       recRef.current = null;
     };
     recRef.current = r;
-    setRec(true);
     try {
       r.start();
     } catch (e) {
+      setStarting(false);
       setRec(false);
       recRef.current = null;
     }
@@ -1320,6 +1408,7 @@ function MicField({
       recRef.current && recRef.current.stop();
     } catch (e) {}
   }, []);
+  const micActive = rec || starting;
   return /*#__PURE__*/React.createElement("div", {
     style: {
       position: 'relative',
@@ -1338,8 +1427,8 @@ function MicField({
   }), SR && /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: toggle,
-    "aria-label": rec ? 'Stop recording' : 'Speak your answer',
-    title: rec ? 'Tap to stop' : 'Speak instead of typing',
+    "aria-label": rec ? 'Stop recording' : starting ? 'Starting microphone' : 'Speak your answer',
+    title: rec ? 'Tap to stop' : starting ? 'Starting…' : 'Speak instead of typing',
     style: {
       position: 'absolute',
       right: 9,
@@ -1353,10 +1442,11 @@ function MicField({
       alignItems: 'center',
       justifyContent: 'center',
       padding: 0,
-      background: rec ? 'var(--rose)' : 'var(--parchment-2)',
-      color: rec ? '#fff' : 'var(--ink-soft)',
+      background: rec ? 'var(--rose)' : starting ? 'var(--gilt-2)' : 'var(--parchment-2)',
+      color: micActive ? '#fff' : 'var(--ink-soft)',
       boxShadow: rec ? '0 0 0 4px rgba(176,86,77,.18)' : 'none',
-      transition: 'all .2s'
+      transition: 'all .2s',
+      opacity: starting ? 0.85 : 1
     }
   }, /*#__PURE__*/React.createElement("svg", {
     viewBox: "0 0 24 24",
@@ -1368,17 +1458,17 @@ function MicField({
     d: "M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3z"
   }), /*#__PURE__*/React.createElement("path", {
     d: "M17 11a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.93V21h2v-3.07A7 7 0 0 0 19 11h-2z"
-  }))), rec && /*#__PURE__*/React.createElement("span", {
+  }))), micActive && /*#__PURE__*/React.createElement("span", {
     style: {
       position: 'absolute',
       right: 44,
       top: 15,
       fontSize: 11,
-      color: 'var(--rose)',
+      color: rec ? 'var(--rose)' : 'var(--gilt)',
       fontWeight: 600,
       pointerEvents: 'none'
     }
-  }, "listening…"));
+  }, rec ? 'listening…' : 'starting…'));
 }
 function Passage({
   data
@@ -2017,13 +2107,58 @@ function Profile({
       fontSize: 14.5,
       lineHeight: 1.95
     }
-  }, d.ageBand && d.ageBand !== 'Prefer not to say' && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
-    className: "muted"
-  }, "Season of age · "), d.ageBand), stages.length > 0 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+  }, stages.length > 0 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
     className: "muted"
   }, "Life stage · "), stages.join(', ')), d.tradition && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
     className: "muted"
-  }, "Tradition · "), d.tradition))), /*#__PURE__*/React.createElement("div", {
+  }, "Tradition · "), d.tradition)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 12
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "muted",
+    style: {
+      fontSize: 13
+    }
+  }, "Season of age ", d.ageBand && d.ageBand !== 'Prefer not to say' ? '' : '(tap to set)'), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 6,
+      flexWrap: 'wrap',
+      marginTop: 7
+    }
+  }, ['20s', '30s', '40s', '50s', '60s', '70+', 'Prefer not to say'].map(opt => {
+    const on = d.ageBand === opt;
+    return /*#__PURE__*/React.createElement("button", {
+      key: opt,
+      onClick: () => save({
+        ...db,
+        profile: {
+          ...p,
+          demographics: {
+            ...d,
+            ageBand: opt
+          }
+        }
+      }),
+      style: {
+        background: on ? 'rgba(25,130,123,.15)' : 'var(--parchment-2)',
+        border: '1px solid ' + (on ? 'var(--gilt-2)' : 'var(--line)'),
+        borderRadius: 16,
+        padding: '5px 12px',
+        fontSize: 12.5,
+        color: on ? 'var(--gilt)' : 'var(--ink-soft)',
+        cursor: 'pointer',
+        fontFamily: "'Inter',sans-serif"
+      }
+    }, opt);
+  })), /*#__PURE__*/React.createElement("p", {
+    className: "serif muted",
+    style: {
+      fontSize: 12,
+      margin: '7px 0 0'
+    }
+  }, "Update this whenever a birthday moves you along — it only gently shapes tone, nothing more."))), /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: 'center'
     }
@@ -3956,15 +4091,31 @@ function Settings({
     if (!f) return;
     const rd = new FileReader();
     rd.onload = () => {
+      let d;
       try {
-        const d = JSON.parse(rd.result);
-        save(d);
-        toast('Restored from backup');
+        d = JSON.parse(rd.result);
       } catch (err) {
         toast('That file could not be read');
+        return;
+      }
+      if (!d || typeof d !== 'object' || !d.entries && !d.profile) {
+        toast('That doesn\u2019t look like a backup');
+        return;
+      }
+      const inCount = (d.entries || []).length,
+        haveCount = (db.entries || []).length;
+      const doMerge = window.confirm(`Merge this backup into what\u2019s already here?\n\nThis device: ${haveCount} reflection${haveCount === 1 ? '' : 's'}.\nBackup file: ${inCount} reflection${inCount === 1 ? '' : 's'}.\n\nOK = merge them together (nothing is lost).\nCancel = replace everything on this device with the backup.`);
+      if (doMerge) {
+        const merged = mergeData(db, d);
+        save(merged);
+        toast(`Merged \u2014 ${merged.entries.length} reflections now`);
+      } else {
+        save(d);
+        toast('Replaced with backup');
       }
     };
     rd.readAsText(f);
+    e.target.value = '';
   }
   const pdTranslations = [{
     id: 'web',
@@ -4239,7 +4390,7 @@ function Settings({
       fontSize: 14,
       margin: '6px 0 10px'
     }
-  }, typeof HAS_GAS !== 'undefined' && HAS_GAS ? 'Your journal syncs to a private file in your Google Drive, so it follows you across every device you\u2019re signed into. It also keeps a fast local copy on this device.' : 'Everything lives on this device. Export a backup so years of journaling are never at the mercy of a cleared cache.'), /*#__PURE__*/React.createElement("div", {
+  }, typeof HAS_GAS !== 'undefined' && HAS_GAS ? 'Your journal syncs to a private file in your Google Drive, so it follows you across every device you\u2019re signed into. It also keeps a fast local copy on this device.' : 'Everything lives on this device. Export a backup so years of journaling are never at the mercy of a cleared cache \u2014 and to carry your journal between devices. Restoring a backup merges it into what\u2019s already here, so writing on your phone and your iPad both keep their reflections.'), /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
       gap: 10,
