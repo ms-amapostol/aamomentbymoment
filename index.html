@@ -1646,9 +1646,11 @@ function MicField({
   const [rec, setRec] = useState(false);
   const [starting, setStarting] = useState(false);
   const [showTip, setShowTip] = useState(false);
+  const [stuck, setStuck] = useState(false);
   const recRef = useRef(null);
   const baseRef = useRef('');
   const primedRef = useRef(false);
+  const stuckTimer = useRef(null);
   const SR = !MIC_DISABLED && typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition);
   function micIntroSeen() {
     try {
@@ -1662,7 +1664,13 @@ function MicField({
       localStorage.setItem('mbm_mic_intro', '1');
     } catch (e) {}
   }
-  async function toggle() {
+  function clearStuckTimer() {
+    if (stuckTimer.current) {
+      clearTimeout(stuckTimer.current);
+      stuckTimer.current = null;
+    }
+  }
+  function toggle() {
     if (!SR) return;
     if (rec) {
       try {
@@ -1671,30 +1679,26 @@ function MicField({
       return;
     }
     if (starting) return;
+    setStuck(false);
     if (!micIntroSeen()) {
       markMicIntro();
       setShowTip(true);
       return;
     } // one-time heads-up before first real use
     setStarting(true);
-    // Prime the mic permission FIRST and wait for it to settle, so the recognizer
-    // never starts mid-prompt (the cause of the first-use stall on iOS/Safari).
-    if (!primedRef.current && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: true
-        });
-        stream.getTracks().forEach(t => t.stop());
-        primedRef.current = true;
-      } catch (e) {
-        setStarting(false);
-        return;
-      } // denied or unavailable — stay quiet
-    }
+    // iOS Safari requires recognition to start SYNCHRONOUSLY inside the tap — no await
+    // before start(), or the first attempt hangs. We do not pre-request getUserMedia:
+    // speech recognition manages its own permission, and priming it breaks the gesture.
+    clearStuckTimer();
+    stuckTimer.current = setTimeout(() => {
+      setStarting(false);
+      setStuck(true);
+    }, 4500);
     let r;
     try {
       r = new SR();
     } catch (e) {
+      clearStuckTimer();
       setStarting(false);
       return;
     }
@@ -1712,14 +1716,17 @@ function MicField({
       onValue(baseRef.current + (finalAdd + interim).replace(/\s+/g, ' ').replace(/^\s+/, ''));
     };
     r.onstart = () => {
+      clearStuckTimer();
       setStarting(false);
       setRec(true);
     };
     r.onerror = () => {
+      clearStuckTimer();
       setStarting(false);
       setRec(false);
     };
     r.onend = () => {
+      clearStuckTimer();
       setStarting(false);
       setRec(false);
       recRef.current = null;
@@ -1728,6 +1735,7 @@ function MicField({
     try {
       r.start();
     } catch (e) {
+      clearStuckTimer();
       setStarting(false);
       setRec(false);
       recRef.current = null;
@@ -1737,6 +1745,7 @@ function MicField({
     try {
       recRef.current && recRef.current.stop();
     } catch (e) {}
+    clearStuckTimer();
   }, []);
   const micActive = rec || starting;
   return /*#__PURE__*/React.createElement("div", {
@@ -1798,7 +1807,39 @@ function MicField({
       fontWeight: 600,
       pointerEvents: 'none'
     }
-  }, rec ? 'listening…' : 'starting…'), showTip && /*#__PURE__*/React.createElement("div", {
+  }, rec ? 'listening…' : 'starting…'), stuck && /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'absolute',
+      right: 0,
+      top: 44,
+      zIndex: 20,
+      width: 'min(280px,86vw)',
+      background: 'var(--vespers)',
+      color: '#eaf1f8',
+      borderRadius: 12,
+      padding: '13px 15px',
+      boxShadow: '0 10px 30px rgba(15,36,64,.35)'
+    }
+  }, /*#__PURE__*/React.createElement("b", {
+    style: {
+      fontSize: 13.5,
+      color: 'var(--gilt-glow)'
+    }
+  }, "The mic didn’t start"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12.8,
+      lineHeight: 1.5,
+      margin: '6px 0 0'
+    }
+  }, "This can happen the first time on a device. Fully close this app — swipe it away, don’t just switch tabs — and reopen it. The mic will work normally after that. Your writing here is already saved, so nothing is lost."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 10,
+      textAlign: 'right'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn gilt sm",
+    onClick: () => setStuck(false)
+  }, "Got it"))), showTip && /*#__PURE__*/React.createElement("div", {
     style: {
       position: 'absolute',
       right: 0,
@@ -1822,7 +1863,7 @@ function MicField({
       lineHeight: 1.5,
       margin: '6px 0 0'
     }
-  }, "Tap the mic and talk — your words become text as you go. The very first time, your phone will ask permission, and the mic may not catch right away. If it seems stuck, just tap it once more and it'll start listening."), /*#__PURE__*/React.createElement("div", {
+  }, "Tap the mic and talk — your words become text as you go. The very first time on this device, after allowing microphone access, the mic may not start. If that happens, fully close this app (swipe it away, don't just switch tabs) and reopen it — it'll work normally every time after that."), /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 10,
       textAlign: 'right'
