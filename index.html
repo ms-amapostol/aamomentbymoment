@@ -791,6 +791,7 @@ function blank() {
     seen: {},
     friends: {},
     customFriends: [],
+    recent: [],
     settings: {
       translation: DEFAULT_TRANSLATION,
       bibleKey: DEFAULT_BIBLE_KEY,
@@ -1016,9 +1017,10 @@ function matchMoment(text) {
   }
   return best ? SEED.stories.find(s => s.moment === best) : null;
 }
-async function choosePassageAI(settings, profile, struggle) {
+async function choosePassageAI(settings, profile, struggle, recent) {
   const sys = guardSystem(profile) + "\nYou are choosing one Scripture passage that meets the reader where she is right now.";
-  const u = `She wrote: "${struggle}"\nChoose ONE well-known Bible passage (a handful of verses she can sit with, not an entire long chapter) that genuinely speaks to this. STRONGLY PREFER A NARRATIVE SCENE — a real person meeting God in a moment (David in the cave, Hagar seen in the desert, Peter sinking, Ruth in the field, the woman reaching for the hem) — over an epistle or proverb, unless her words clearly call for direct teaching. People meet God in people. Respond with ONLY the reference in the form "Book Chapter:Verses" — for example "1 Samuel 16:6-13" or "Matthew 14:25-33". Nothing else.`;
+  const avoid = recent && recent.length ? `\n\nShe has recently been given these passages — do NOT choose any of them, or anything that overlaps them; bring her somewhere fresh in Scripture: ${recent.join('; ')}.` : '';
+  const u = `She wrote: "${struggle}"\nChoose ONE well-known Bible passage (a handful of verses she can sit with, not an entire long chapter) that genuinely speaks to this. STRONGLY PREFER A NARRATIVE SCENE — a real person meeting God in a moment (David in the cave, Hagar seen in the desert, Peter sinking, Ruth in the field, the woman reaching for the hem) — over an epistle or proverb, unless her words clearly call for direct teaching. People meet God in people. The Bible is vast — draw from across it, not only the most famous few passages.${avoid}\nRespond with ONLY the reference in the form "Book Chapter:Verses" — for example "1 Samuel 16:6-13" or "Matthew 14:25-33". Nothing else.`;
   const out = await callClaude(settings, sys, u);
   const ref = (out || '').trim().split('\n')[0].replace(/^["'\s]+|["'\.\s]+$/g, '').trim();
   if (parseRef(ref)) return ref;
@@ -2760,14 +2762,14 @@ function Encounter({
             reference: scene.ref
           };
         } else if (mode === 'surprise') {
-          ref = pickSurprise(db.seen);
+          ref = pickSurprise(db.seen, db.recent);
         } else if (mode === 'meet_text') {
           const matched = matchMoment(arg.struggle);
           ref = matched ? matched.reference : 'Matthew 11:28-30';
           if (matched) seed = matched;
           if (hasAI) {
             try {
-              ref = await choosePassageAI(db.settings, db.profile, arg.struggle);
+              ref = await choosePassageAI(db.settings, db.profile, arg.struggle, db.recent);
               seed = null;
             } catch (e) {/* keep matched or gentle default */}
           }
@@ -2791,6 +2793,14 @@ function Encounter({
         }
         setPassage(data);
         setStage(1);
+        try {
+          const key = data.reference || ref;
+          const rr = [key, ...(db.recent || []).filter(x => x !== key)].slice(0, 12);
+          save({
+            ...db,
+            recent: rr
+          });
+        } catch (e) {}
       } catch (e) {
         setErr(e.message);
       }
@@ -3312,13 +3322,14 @@ function Encounter({
     }
   }, "✨ marks anything that uses your AI key — a small cost per tap."));
 }
-function pickSurprise(seen) {
-  const seenBooks = Object.keys(seen);
-  const fresh = SURPRISE.filter(r => {
+function pickSurprise(seen, recent) {
+  const rec = new Set(recent || []);
+  const notRecent = SURPRISE.filter(r => !rec.has(r));
+  const fresh = notRecent.filter(r => {
     const p = parseRef(r);
     return p && !(seen[p.book] || []).includes(p.chapter);
   });
-  const pool = fresh.length ? fresh : SURPRISE;
+  const pool = fresh.length ? fresh : notRecent.length ? notRecent : SURPRISE;
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
