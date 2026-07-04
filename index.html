@@ -727,6 +727,24 @@ const PATH_REFLECT = {
   contemplative: "Can you simply rest in God's presence in this, apart from any task?",
   intellectual: "What question does this passage raise that you want to study further?"
 };
+const REFLECT_POOL = ["What do you sense God saying to you in these words?", "What does this passage show you about who God is?", "Read it once more, slowly — which word or line won't let you go?", "What here comforts you? What unsettles you?", "What is this asking of you, right where you are today?", "Where do you find yourself in this passage right now?", "What question does this stir in you — one you'd love to keep pulling on?", "What do you want to remember from this when today gets hard?", "If this passage is true, what does it free you from today?", "What is God inviting you to trust here — not to do, but to trust?", "Where do you most need what this passage offers?", "What has shifted, even slightly, between you and God as you read this?"];
+function pickReflectQuestions(ref, profile) {
+  let seed = 0;
+  const key = (ref || '') + new Date().toDateString();
+  for (let i = 0; i < key.length; i++) {
+    seed = seed * 31 + key.charCodeAt(i) >>> 0;
+  }
+  const pool = [...REFLECT_POOL];
+  const out = [];
+  for (let n = 0; n < 3 && pool.length; n++) {
+    const idx = seed % pool.length;
+    out.push(pool.splice(idx, 1)[0]);
+    seed = seed * 1103515245 + 12345 >>> 0;
+  }
+  const top = profile.pathway && profile.pathway.top && profile.pathway.top[0];
+  if (top && PATH_REFLECT[top]) out[2] = PATH_REFLECT[top];
+  return out;
+}
 
 /* ============ storage ============ */
 function load() {
@@ -909,6 +927,12 @@ async function fetchPassage(ref, settings) {
 
 /* ============ AI ============ */
 async function callClaude(settings, sys, user) {
+  return callClaudeMessages(settings, sys, [{
+    role: 'user',
+    content: user
+  }]);
+}
+async function callClaudeMessages(settings, sys, messages) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -921,10 +945,7 @@ async function callClaude(settings, sys, user) {
       model: settings.aiModel || 'claude-sonnet-4-5',
       max_tokens: 900,
       system: sys,
-      messages: [{
-        role: 'user',
-        content: user
-      }]
+      messages
     })
   });
   if (!r.ok) {
@@ -934,16 +955,36 @@ async function callClaude(settings, sys, user) {
   const d = await r.json();
   return d.content.filter(c => c.type === 'text').map(c => c.text).join('\n').trim();
 }
+function parseLookup(text) {
+  const t = (text || '').replace(/__ERR__/, '');
+  const m = t.match(/\n?\s*LOOKUP::\s*(.+?)\s*$/);
+  if (!m) return {
+    body: t.trim(),
+    terms: []
+  };
+  const terms = m[1].split('|').map(s => s.trim().replace(/^[\-\*\d\.\)\s]+/, '')).filter(Boolean).slice(0, 4);
+  return {
+    body: t.slice(0, m.index).trim(),
+    terms
+  };
+}
+function refLink(term) {
+  return 'https://en.wikipedia.org/wiki/Special:Search?search=' + encodeURIComponent(term);
+}
 function guardSystem(profile) {
   const p = profile;
   const path = (p.pathway && p.pathway.top || []).map(k => PATHWAYS.find(x => x[0] === k)?.[1]).join(' & ');
   const gifts = (p.gifts && p.gifts.top || []).join(', ');
+  const pers = (p.personality && p.personality.desc || []).join(', ');
   const d = p.demographics || {};
   const stages = Array.isArray(d.lifeStage) ? d.lifeStage : d.lifeStage ? [d.lifeStage] : [];
   const parent = stages.some(s => /Raising young kids|Parent of grown kids|Empty nest/.test(s)) || d.parent === 'yes';
   const age = d.ageBand && d.ageBand !== 'Prefer not to say' ? ', in her ' + d.ageBand : '';
   return `You are a warm, humble Bible-study companion inside a personal devotional app. You are a companion on the road (Luke 24), not a lecturer: lead with the heart, and help her MEET God in the text, not merely learn about it. Facts and history serve the encounter — never replace it. You are not an authority and never pronounce doctrine as settled; you point back to Scripture, offer perspectives, and encourage the reader's own discernment and their pastor and community. You respect the reader's own faith tradition${d.tradition ? ` (${d.tradition})` : ''} rather than importing another. You are never a substitute for the Holy Spirit, prayer, or people. Keep a gentle, literate, non-saccharine tone. Be concise.
-Reader context — meet her where she is: ${stages.join(', ') || 'unspecified life stage'}${parent ? ' (a parent)' : ''}${age}. Spiritual temperament (Sacred Pathways): ${path || 'unknown'}. Spiritual gifts: ${gifts || 'unknown'}. Shape reflection toward how she connects with God, but don't name the framework unless asked.`;
+SACRED BOUNDARY — never cross this: You must NEVER speak in the voice of God, Jesus, or the Holy Spirit, and never invent, paraphrase, imagine, or speculate about what God "might say," "may be saying," or "wants you to hear." Do not put words in God's mouth, even gently or hypothetically. The ONLY way you may convey God's words is by quoting actual Scripture with its reference. When you point to what God reveals, ground it explicitly in the text on the table ("in this passage, we see…") — you speak only ever as a companion helping her listen, never as the Lord Himself.
+You help her have a real, unhurried conversation with the Word: ask ONE question at a time, respond to what she actually writes, follow her thread, and help her go deeper into what the passage reveals and what it means for her walk. Draw on the passage and, where it truly helps, its context. Never rush her toward a tidy takeaway.
+Reader context — meet her where she is: ${stages.join(', ') || 'unspecified life stage'}${parent ? ' (a parent)' : ''}${age}. Spiritual temperament (Sacred Pathways): ${path || 'unknown'}. Spiritual gifts: ${gifts || 'unknown'}. Shape reflection toward how she connects with God, but don't name the framework unless asked.
+How she processes: ${pers || 'unspecified'}. Let this steer your TONE and PACING (not the content): with someone reflective or deeply feeling, move slowly and tenderly and leave silence to sit in; with someone structured, offer a little more shape and clarity; with someone open, feel free to wonder aloud together; with someone steady, be grounded and unhurried. Adapt naturally — and never name these traits.`;
 }
 
 /* map free-typed words to the best-fitting anchor story */
@@ -2501,7 +2542,8 @@ function PlanView({
 /* ============ Meet me / Analog pickers ============ */
 function MeetPicker({
   go,
-  startEncounter
+  startEncounter,
+  hasAI
 }) {
   const [struggle, setStruggle] = useState('');
   const moments = SEED.stories.map(s => ({
@@ -2549,7 +2591,7 @@ function MeetPicker({
     onClick: () => startEncounter('meet_text', {
       struggle: struggle.trim()
     })
-  }, "Find me a passage →")), /*#__PURE__*/React.createElement("div", {
+  }, hasAI ? '\u2728 ' : '', "Find me a passage →")), /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
       alignItems: 'center',
@@ -2686,13 +2728,16 @@ function Encounter({
   const [story, setStory] = useState(null);
   const [err, setErr] = useState('');
   const [understand, setUnderstand] = useState('');
+  const [understandTerms, setUnderstandTerms] = useState([]);
   const [uLoading, setULoading] = useState(false);
   const [questions, setQuestions] = useState([]);
   const [answers, setAnswers] = useState(['', '', '', '']);
+  const [convo, setConvo] = useState([]); // [{role:'ai'|'me', text}]
+  const [convoInput, setConvoInput] = useState('');
+  const [convoLoading, setConvoLoading] = useState(false);
   const [apply, setApply] = useState('');
-  const [walkWord, setWalkWord] = useState('');
   const [prayer, setPrayer] = useState('');
-  const [pickVerse, setPickVerse] = useState(null);
+  const [pickVerses, setPickVerses] = useState(() => new Set());
   const struggle = arg && arg.struggle || '';
   const hasAI = !!db.settings.aiKey;
   const isFriend = mode === 'friend';
@@ -2767,51 +2812,92 @@ function Encounter({
       try {
         const sys = guardSystem(db.profile);
         const txt = passage.verses ? passage.verses.map(v => v.t).join(' ') : passage.raw;
-        const u = `Passage: ${passage.reference}\n"${txt}"\n${sceneCtx ? `Scene: ${sceneCtx}\n` : ''}${struggle ? `She is carrying: "${struggle}"\n` : ''}\nBring her INSIDE this passage. In 110-140 words, speaking to her in the second person where it feels natural: help her see and stand in the moment — the setting, what the people there were feeling, what it cost, what God was doing. Weave in one or two historical or original-language details ONLY where they deepen the encounter, never as a lecture. End with one sentence that gently connects this moment to hers. Warm, vivid, plain. No headers, no list.`;
-        setUnderstand(await callClaude(db.settings, sys, u));
+        const u = `Passage: ${passage.reference}\n"${txt}"\n${sceneCtx ? `Scene: ${sceneCtx}\n` : ''}${struggle ? `She is carrying: "${struggle}"\n` : ''}\nBring her INSIDE this passage. In 110-140 words, speaking to her in the second person where it feels natural: help her see and stand in the moment — the setting, what the people there were feeling, what it cost, what God was doing. Weave in one or two historical or original-language details ONLY where they deepen the encounter, never as a lecture. End with one sentence that gently connects this moment to hers. Warm, vivid, plain. No headers, no list.\n\nIF (and only if) you stated a specific historical, cultural, or original-language fact, or defined a term, add ONE final line in exactly this format so she can verify it herself: LOOKUP:: term one | term two (1-3 short, searchable terms naming what you asserted — a place, a word, a custom, a person). If you made no such factual claim, do NOT add the line.`;
+        const raw = await callClaude(db.settings, sys, u);
+        const {
+          body,
+          terms
+        } = parseLookup(raw);
+        setUnderstand(body);
+        setUnderstandTerms(terms);
       } catch (e) {
         setUnderstand('__ERR__' + e.message);
       }
       setULoading(false);
     }
   }
+  function passageText() {
+    return passage.verses ? passage.verses.map(v => v.t).join(' ') : passage.raw;
+  }
+  function convoContextMsg() {
+    return `We are reading together. Guide me in an unhurried, back-and-forth reflection so I can meet God in this passage — ask one question at a time, respond to what I actually say, and help me go deeper into what it reveals and what it means for my walk. Remember: never speak in God's voice or invent His words; only quote Scripture directly if you quote.\n\nPassage: ${passage.reference}\n"${passageText()}"\n${sceneCtx ? `Scene: ${sceneCtx}\n` : ''}${struggle ? `What I'm carrying: "${struggle}"\n` : ''}\nBegin with one warm opening question inviting me to sit with what God might be showing me here. Just the question.`;
+  }
   async function goReflect() {
     setStage(4);
-    if (questions.length === 0) {
-      if (hasAI) {
+    if (hasAI) {
+      if (convo.length === 0 && !convoLoading) {
+        setConvoLoading(true);
         try {
-          const sys = guardSystem(db.profile);
-          const txt = passage.verses ? passage.verses.map(v => v.t).join(' ') : passage.raw;
-          const u = `Passage: ${passage.reference}\n"${txt}"\n${sceneCtx ? `Scene: ${sceneCtx}\n` : ''}${struggle ? `She wrote that she is carrying: "${struggle}".\n` : ''}Offer exactly 3 short reflection questions addressed directly to her, in the second person — questions for the heart, not analysis. The FIRST must place her inside this story or scene ("Where are you in this story…", "When have you stood where they stood…"). Then move toward her walk with God right now. Return only the 3 questions, one per line, no numbering.`;
-          const out = await callClaude(db.settings, sys, u);
-          setQuestions(out.split('\n').map(x => x.replace(/^[\d\.\-\)\s]+/, '').trim()).filter(Boolean).slice(0, 3));
+          const opening = await callClaudeMessages(db.settings, guardSystem(db.profile), [{
+            role: 'user',
+            content: convoContextMsg()
+          }]);
+          setConvo([{
+            role: 'ai',
+            text: opening
+          }]);
         } catch (e) {
-          setQuestions(staticQuestions());
+          setConvo([{
+            role: 'ai',
+            text: '__ERR__' + e.message
+          }]);
         }
-      } else setQuestions(staticQuestions());
+        setConvoLoading(false);
+      }
+    } else if (questions.length === 0) {
+      setQuestions(pickReflectQuestions(passage.reference, db.profile));
     }
   }
-  function staticQuestions() {
-    const base = ["Where are you inside this story — whose place do you find yourself standing in?", "What does this show you about how God draws near — and where do you need Him near right now?"];
-    const top = db.profile.pathway && db.profile.pathway.top && db.profile.pathway.top[0];
-    base.push(top && PATH_REFLECT[top] ? PATH_REFLECT[top] : "What is one thing from this you want to carry close to your heart today?");
-    return base;
-  }
-  async function goWalk() {
-    setStage(5);
-    if (hasAI && !walkWord) {
-      try {
-        const sys = guardSystem(db.profile);
-        const txt = passage.verses ? passage.verses.map(v => v.t).join(' ') : passage.raw;
-        const u = `Passage: ${passage.reference}\n"${txt}"\n${struggle ? `She is carrying: "${struggle}"\n` : ''}In the spirit and words of THIS passage only, write ONE tender sentence (under 32 words) of what Jesus might be saying to her right now — faithful to the text, gentle, no commands, no promises beyond what the passage itself holds. Return only the sentence, no quotation marks.`;
-        const w = (await callClaude(db.settings, sys, u)).trim().replace(/^["']+|["']+$/g, '');
-        if (w && w.length < 260) setWalkWord(w);
-      } catch (e) {/* the static invitation carries the moment */}
+  async function sendConvo() {
+    const text = convoInput.trim();
+    if (!text || convoLoading) return;
+    const next = [...convo, {
+      role: 'me',
+      text
+    }];
+    setConvo(next);
+    setConvoInput('');
+    setConvoLoading(true);
+    try {
+      const msgs = [{
+        role: 'user',
+        content: convoContextMsg()
+      }];
+      next.forEach(m => msgs.push({
+        role: m.role === 'ai' ? 'assistant' : 'user',
+        content: m.text
+      }));
+      const reply = await callClaudeMessages(db.settings, guardSystem(db.profile), msgs);
+      setConvo([...next, {
+        role: 'ai',
+        text: reply
+      }]);
+    } catch (e) {
+      setConvo([...next, {
+        role: 'ai',
+        text: '__ERR__' + e.message
+      }]);
     }
+    setConvoLoading(false);
   }
   function commit() {
     const now = new Date().toISOString();
-    const reflectText = questions.map((q, i) => answers[i] ? `${q}\n${answers[i]}` : '').filter(Boolean).join('\n\n');
+    let reflectText;
+    if (hasAI && convo.length) {
+      reflectText = convo.filter(m => !(m.role === 'ai' && m.text.startsWith('__ERR__'))).map(m => m.role === 'ai' ? '· ' + m.text : m.text).join('\n\n');
+    } else {
+      reflectText = questions.map((q, i) => answers[i] ? `${q}\n${answers[i]}` : '').filter(Boolean).join('\n\n');
+    }
     const entry = {
       id: 'e' + Date.now(),
       date: now,
@@ -2835,16 +2921,25 @@ function Encounter({
         [friend.id]: [...fset]
       };
     }
-    if (pickVerse != null && passage.verses) {
-      const v = passage.verses[pickVerse];
-      newDb.verses = [{
-        id: 'v' + Date.now(),
-        date: now,
-        ref: passage.reference + (passage.verses.length > 1 ? ':' + v.v : ''),
-        text: v.t,
-        translation: passage.translation,
-        note: ''
-      }, ...db.verses];
+    if (pickVerses.size && passage.verses) {
+      const chosen = [...pickVerses].sort((a, b) => a - b).map(i => passage.verses[i]).filter(Boolean);
+      if (chosen.length) {
+        const multi = passage.verses.length > 1;
+        const text = chosen.map(v => multi ? `${v.v} ${v.t}` : v.t).join(' ');
+        const nums = chosen.map(v => v.v);
+        const contiguous = nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
+        const refBase = passage.reference.replace(/:\d+(-\d+)?$/, '');
+        const vlabel = !multi ? '' : nums.length === 1 ? String(nums[0]) : contiguous ? `${nums[0]}-${nums[nums.length - 1]}` : nums.join(',');
+        const ref = multi && vlabel ? `${refBase}:${vlabel}` : passage.reference;
+        newDb.verses = [{
+          id: 'v' + Date.now(),
+          date: now,
+          ref,
+          text,
+          translation: passage.translation,
+          note: ''
+        }, ...db.verses];
+      }
     }
     if (prayer.trim()) {
       newDb.prayers = [{
@@ -2896,9 +2991,9 @@ function Encounter({
       fontSize: 16
     }
   }, "Turning to the page…"));
-  const STEPS = ['Pray', 'Read', 'Enter', 'Reflect', 'Walk', 'Respond'];
+  const STEPS = ['Pray', 'Read', 'Enter', 'Reflect', 'Respond'];
   function leave() {
-    const hasWork = answers.some(a => a && a.trim()) || apply.trim() || prayer.trim();
+    const hasWork = convo.some(m => m.role === 'me') || convoInput.trim() || answers.some(a => a && a.trim()) || apply.trim() || prayer.trim();
     if (hasWork && !window.confirm("Leave this time with God? What you've written here so far won't be saved.")) return;
     go('home');
   }
@@ -2964,7 +3059,7 @@ function Encounter({
   }, struggle)), /*#__PURE__*/React.createElement("button", {
     className: "btn gilt",
     onClick: goUnderstand
-  }, "Step into the story →")), stage === 3 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+  }, hasAI ? '\u2728 ' : '', "Step into the story →")), stage === 3 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "rule"
   }), /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"
@@ -2980,7 +3075,24 @@ function Encounter({
       lineHeight: 1.65,
       marginTop: 8
     }
-  }, understand), !uLoading && understand.startsWith('__ERR__') && /*#__PURE__*/React.createElement("div", {
+  }, understand), !uLoading && understandTerms.length > 0 && /*#__PURE__*/React.createElement("p", {
+    className: "settle",
+    style: {
+      fontSize: 12,
+      color: 'var(--ink-soft)',
+      marginTop: 9,
+      lineHeight: 1.6
+    }
+  }, "Look up to verify: ", understandTerms.map((t, i) => /*#__PURE__*/React.createElement("span", {
+    key: i
+  }, i > 0 ? ' · ' : '', /*#__PURE__*/React.createElement("a", {
+    href: refLink(t),
+    target: "_blank",
+    rel: "noopener",
+    style: {
+      color: 'var(--gilt)'
+    }
+  }, t)))), !uLoading && understand.startsWith('__ERR__') && /*#__PURE__*/React.createElement("div", {
     className: "keyhint"
   }, "The living companion needs an Anthropic key (Settings). ", understand.slice(7)), !uLoading && !understand && story && /*#__PURE__*/React.createElement("p", {
     className: "serif settle",
@@ -2998,11 +3110,88 @@ function Encounter({
   }, /*#__PURE__*/React.createElement("button", {
     className: "btn gilt",
     onClick: goReflect
-  }, "Reflect →"))), stage === 4 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+  }, hasAI ? '\u2728 ' : '', "Reflect →"))), stage === 4 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "rule"
   }), /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"
-  }, "Reflect"), questions.length === 0 && /*#__PURE__*/React.createElement("p", {
+  }, "Reflect together"), hasAI ? /*#__PURE__*/React.createElement(React.Fragment, null, convo.length === 0 && convoLoading && /*#__PURE__*/React.createElement("p", {
+    className: "serif muted settle",
+    style: {
+      fontSize: 16,
+      marginTop: 8
+    }
+  }, "Sitting with the passage…"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 8
+    }
+  }, convo.map((m, i) => m.role === 'ai' ? m.text.startsWith('__ERR__') ? /*#__PURE__*/React.createElement("div", {
+    key: i,
+    className: "keyhint"
+  }, "The companion couldn't respond: ", m.text.slice(7)) : /*#__PURE__*/React.createElement("p", {
+    key: i,
+    className: "serif settle",
+    style: {
+      fontSize: 16.5,
+      lineHeight: 1.6,
+      margin: '14px 0 0'
+    }
+  }, m.text) : /*#__PURE__*/React.createElement("div", {
+    key: i,
+    className: "settle",
+    style: {
+      margin: '12px 0 0',
+      padding: '11px 14px',
+      background: 'var(--parchment-2)',
+      borderRadius: '12px 12px 12px 3px',
+      fontSize: 15.5,
+      lineHeight: 1.55,
+      color: 'var(--ink)'
+    }
+  }, m.text)), convoLoading && convo.length > 0 && /*#__PURE__*/React.createElement("p", {
+    className: "serif muted settle",
+    style: {
+      fontSize: 14.5,
+      margin: '12px 0 0'
+    }
+  }, "Listening…")), convo.length > 0 && !convo[convo.length - 1].text.startsWith('__ERR__') && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 14
+    }
+  }, /*#__PURE__*/React.createElement(MicField, {
+    rows: 3,
+    value: convoInput,
+    onValue: setConvoInput,
+    placeholder: "Say what's stirring — or ask a question of your own…"
+  })), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12.5,
+      color: 'var(--ink-soft)',
+      margin: '12px 0 8px',
+      lineHeight: 1.55
+    }
+  }, /*#__PURE__*/React.createElement("b", {
+    style: {
+      color: 'var(--gilt)'
+    }
+  }, "Go deeper"), " keeps the conversation going. ", /*#__PURE__*/React.createElement("b", {
+    style: {
+      color: 'var(--ink)'
+    }
+  }, "Respond"), " moves on to close in prayer."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 10,
+      flexWrap: 'wrap',
+      alignItems: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn gilt sm",
+    disabled: !convoInput.trim() || convoLoading,
+    onClick: sendConvo
+  }, "✨ Go deeper →"), /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost sm",
+    onClick: () => setStage(5)
+  }, "I'm ready to respond →")))) : /*#__PURE__*/React.createElement(React.Fragment, null, questions.length === 0 && /*#__PURE__*/React.createElement("p", {
     className: "serif muted",
     style: {
       fontSize: 16
@@ -3022,92 +3211,85 @@ function Encounter({
     },
     placeholder: "Take your time…"
   }))), /*#__PURE__*/React.createElement("div", {
+    className: "keyhint",
+    style: {
+      marginTop: 12
+    }
+  }, "With an Anthropic key (Settings), Reflect becomes a real back-and-forth — it responds to what you write and helps you go deeper, one question at a time."), /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 16
     }
   }, /*#__PURE__*/React.createElement("button", {
     className: "btn gilt",
-    onClick: goWalk
-  }, "Walk with Him →"))), stage === 5 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    onClick: () => setStage(5)
+  }, "Respond →")))), stage === 5 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "rule"
   }), /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"
-  }, "Walk with Him"), walkWord && /*#__PURE__*/React.createElement("div", {
-    className: "settle",
-    style: {
-      margin: '8px 0 2px'
-    }
-  }, /*#__PURE__*/React.createElement("p", {
-    className: "serif muted",
-    style: {
-      fontSize: 13,
-      margin: '0 0 5px'
-    }
-  }, "Drawn from this passage — a word He might be speaking over you:"), /*#__PURE__*/React.createElement("p", {
-    className: "serif",
-    style: {
-      fontSize: 17,
-      lineHeight: 1.6,
-      fontStyle: 'italic',
-      color: 'var(--ink)',
-      margin: 0
-    }
-  }, "“", walkWord, "”")), !walkWord && !hasAI && /*#__PURE__*/React.createElement("p", {
+  }, "Respond to God"), /*#__PURE__*/React.createElement("p", {
     className: "serif muted settle",
     style: {
       fontSize: 14.5,
       marginTop: 6
     }
-  }, "The same God who moved in this passage is beside you as you read it. He is not far off."), /*#__PURE__*/React.createElement("p", {
-    className: "q",
-    style: {
-      marginTop: 12
-    }
-  }, struggle ? "You've named what you're carrying. What do you want to say to Jesus about it — plainly, like a friend beside you?" : "If Jesus were sitting beside you as you read this — and He is — what would you want to say to Him?"), /*#__PURE__*/React.createElement(MicField, {
+  }, "As you close, turn back to Him in your own words — what you're taking from this, or simply what's on your heart. He is near, and He is listening."), /*#__PURE__*/React.createElement(MicField, {
     rows: 4,
     value: apply,
     onValue: setApply,
-    placeholder: "Speak plainly — He's listening…"
+    placeholder: "Speak to God plainly…",
+    style: {
+      marginTop: 10
+    }
+  }), passage.verses && passage.verses.length > 0 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    className: "rule"
   }), /*#__PURE__*/React.createElement("div", {
     style: {
-      marginTop: 16
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'baseline',
+      gap: 8
     }
-  }, /*#__PURE__*/React.createElement("button", {
-    className: "btn gilt",
-    onClick: () => setStage(6)
-  }, "Respond →"))), stage === 6 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-    className: "rule"
-  }), passage.verses && passage.verses.length > 0 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"
-  }, "Bank a verse (optional)"), /*#__PURE__*/React.createElement("p", {
+  }, "Keep His Word"), /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost sm",
+    onClick: () => {
+      const all = passage.verses.map((_, i) => i);
+      setPickVerses(pickVerses.size === all.length ? new Set() : new Set(all));
+    }
+  }, pickVerses.size === passage.verses.length ? 'Clear all' : 'Keep whole passage')), /*#__PURE__*/React.createElement("p", {
     className: "serif muted",
     style: {
-      fontSize: 14,
+      fontSize: 13.5,
       margin: '4px 0 10px'
     }
-  }, "Which line do you want to keep?"), passage.verses.map((v, i) => /*#__PURE__*/React.createElement("div", {
+  }, "Tap the verses that are feeding you — one, a few, or all. They're saved together to your banked Scripture."), passage.verses.map((v, i) => /*#__PURE__*/React.createElement("div", {
     key: i,
-    className: 'vpick' + (pickVerse === i ? ' sel' : ''),
-    onClick: () => setPickVerse(pickVerse === i ? null : i)
+    className: 'vpick' + (pickVerses.has(i) ? ' sel' : ''),
+    onClick: () => {
+      const s = new Set(pickVerses);
+      s.has(i) ? s.delete(i) : s.add(i);
+      setPickVerses(s);
+    }
   }, passage.verses.length > 1 && /*#__PURE__*/React.createElement("b", {
     style: {
       color: 'var(--gilt)'
     }
-  }, v.v, " "), v.t)), /*#__PURE__*/React.createElement("div", {
+  }, v.v, " "), v.t))), /*#__PURE__*/React.createElement("div", {
     className: "rule"
-  })), /*#__PURE__*/React.createElement("div", {
+  }), /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"
-  }, "Pray"), /*#__PURE__*/React.createElement("p", {
+  }, "A prayer to hold"), /*#__PURE__*/React.createElement("p", {
     className: "serif muted",
     style: {
-      fontSize: 14,
+      fontSize: 13.5,
       margin: '4px 0 8px'
     }
-  }, "Anything you want to bring to God? It goes to your prayer log, where you can later mark it answered."), /*#__PURE__*/React.createElement(MicField, {
+  }, "Have a specific request? It goes to your prayer log, where you can later mark how God answered."), /*#__PURE__*/React.createElement(MicField, {
     rows: 3,
     value: prayer,
     onValue: setPrayer,
-    placeholder: "Lord…"
+    placeholder: "Lord, I'm asking…"
   }), /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 18,
@@ -3120,8 +3302,15 @@ function Encounter({
     onClick: commit
   }, "Keep this"), /*#__PURE__*/React.createElement("button", {
     className: "btn ghost",
-    onClick: () => go('home')
-  }, "Discard")))));
+    onClick: leave
+  }, "Discard")))), hasAI && /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 11.5,
+      color: 'var(--ink-soft)',
+      textAlign: 'center',
+      marginTop: 12
+    }
+  }, "✨ marks anything that uses your AI key — a small cost per tap."));
 }
 function pickSurprise(seen) {
   const seenBooks = Object.keys(seen);
@@ -3343,7 +3532,7 @@ function FriendsView({
     className: "btn gilt sm",
     disabled: finding,
     onClick: onFind
-  }, finding ? 'Searching Scripture…' : 'Find my friend')), findErr && /*#__PURE__*/React.createElement("p", {
+  }, finding ? 'Searching Scripture…' : hasAI ? '\u2728 Find my friend' : 'Find my friend')), findErr && /*#__PURE__*/React.createElement("p", {
     className: "serif",
     style: {
       fontSize: 13.5,
@@ -4373,7 +4562,8 @@ function App() {
     onDismissNudge: () => setAiNudgeDismissed(true)
   }), view === 'meet' && /*#__PURE__*/React.createElement(MeetPicker, {
     go: go,
-    startEncounter: startEncounter
+    startEncounter: startEncounter,
+    hasAI: !!db.settings.aiKey
   }), view === 'friends' && /*#__PURE__*/React.createElement(FriendsView, {
     db: db,
     save: save,
