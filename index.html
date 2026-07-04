@@ -677,8 +677,22 @@ const spanLabel = refs => {
   if (f && l && f.book === l.book) return f.book + ' ' + f.chapter + '\u2013' + l.chapter;
   return refs[0] + ' \u2013 ' + refs[refs.length - 1];
 };
+function evenSlice(arr, d, D) {
+  return arr.slice(Math.floor(d * arr.length / D), Math.floor((d + 1) * arr.length / D));
+}
+function mixLabel(parts) {
+  const bits = parts.filter(p => p && p.length).map(refs => {
+    if (refs.length === 1) return refs[0].replace(/^Psalms /, 'Psalm ');
+    const f = parseRef(refs[0]),
+      l = parseRef(refs[refs.length - 1]);
+    if (f && l && f.book === l.book) return (f.book + ' ' + f.chapter + '\u2013' + l.chapter).replace(/^Psalms /, 'Psalm ');
+    return refs[0] + '\u2026';
+  });
+  return bits.join(' \u00b7 ');
+}
 function buildSchedule(order, dur) {
   if (order === 'mix') {
+    const D = +dur;
     const psalms = [];
     for (let c = 1; c <= 150; c++) psalms.push('Psalms ' + c);
     const nt = [];
@@ -690,15 +704,15 @@ function buildSchedule(order, dur) {
       if (b === 'Psalms') return;
       for (let c = 1; c <= CHAPTERS[b]; c++) otOther.push(b + ' ' + c);
     });
-    const oc = chunk(otOther, dur),
-      nc = chunk(nt, dur),
-      pc = chunk(psalms, dur);
     const days = [];
-    for (let d = 0; d < dur; d++) {
-      const refs = [...(oc[d] || []), ...(nc[d] || []), ...(pc[d] || [])];
+    for (let d = 0; d < D; d++) {
+      const ot = evenSlice(otOther, d, D);
+      const n = evenSlice(nt, d, D);
+      const ps = D >= 150 ? [psalms[d % 150]] : evenSlice(psalms, d, D); // a Psalm every day on long plans; all 150 on short ones
+      const refs = [...ot, ...n, ...ps];
       if (refs.length) days.push({
         refs,
-        label: refs.length === 1 ? refs[0] : refs[0] + ' + ' + (refs.length - 1) + ' more'
+        label: mixLabel([ot, n, ps])
       });
     }
     return days;
@@ -708,8 +722,293 @@ function buildSchedule(order, dur) {
     label: spanLabel(refs)
   }));
 }
-const PLAN_ORDERS = [['canonical', 'Straight through', 'Genesis to Revelation, in order'], ['chronological', 'Chronological', 'roughly as events unfolded, by book'], ['mix', 'Daily mix', 'some Old Testament, New Testament, and a Psalm each day']];
+const PLAN_ORDERS = [['canonical', 'Straight through', 'Genesis to Revelation, in order'], ['chronological', 'Chronological', 'roughly as events unfolded, by book'], ['mix', 'Daily mix', 'Old Testament and a Psalm each day, New Testament woven through']];
 const PLAN_DURATIONS = [['365', 'One year'], ['180', 'Six months'], ['90', '90 days']];
+
+// Curated thematic journeys — finite, guided reading paths on one theme.
+const JOURNEYS = [{
+  id: 'jesus',
+  title: 'The Life of Jesus',
+  blurb: 'Walk through His life in the Gospels, from the manger to the empty tomb.',
+  days: [{
+    refs: ['Luke 1'],
+    label: 'The announcement',
+    note: 'Before anything else, grace interrupts ordinary lives with impossible news.'
+  }, {
+    refs: ['Luke 2'],
+    label: 'Born among us',
+    note: 'God arrives not in a palace but a feeding trough. Notice who is invited first.'
+  }, {
+    refs: ['Matthew 3', 'Matthew 4'],
+    label: 'Baptism and testing',
+    note: 'The beloved Son is named, then led into the wilderness. Sonship comes before struggle.'
+  }, {
+    refs: ['John 2'],
+    label: 'The first sign',
+    note: 'Water into wine — glory revealed first at a small, human celebration.'
+  }, {
+    refs: ['Matthew 5'],
+    label: 'The Sermon on the Mount',
+    note: 'The kingdom turned upside down: the poor, the mourning, the meek are blessed.'
+  }, {
+    refs: ['Luke 15'],
+    label: 'The heart of the Father',
+    note: 'Three stories of the lost and found. Watch how the father runs.'
+  }, {
+    refs: ['John 6'],
+    label: 'The bread of life',
+    note: 'He feeds thousands, then offers something harder and deeper than bread.'
+  }, {
+    refs: ['John 11'],
+    label: 'I am the resurrection',
+    note: 'At a grave, Jesus weeps before He acts. He is not distant from your loss.'
+  }, {
+    refs: ['Luke 22'],
+    label: 'The last supper',
+    note: 'On the night He was betrayed, He gave thanks and gave Himself.'
+  }, {
+    refs: ['John 19'],
+    label: 'The cross',
+    note: 'Read slowly. "It is finished" is not defeat but completion.'
+  }, {
+    refs: ['John 20'],
+    label: 'He is risen',
+    note: 'The stone is rolled away. He calls Mary by name — and knows yours.'
+  }, {
+    refs: ['John 21'],
+    label: 'Do you love me?',
+    note: 'The risen Christ restores the one who failed Him. Grace has the last word.'
+  }]
+}, {
+  id: 'whogod',
+  title: 'Who God Is',
+  blurb: 'His character, traced across Scripture — the God you are actually praying to.',
+  days: [{
+    refs: ['Exodus 34:1-9'],
+    label: 'The name He speaks',
+    note: 'God defines Himself first by mercy and steadfast love.'
+  }, {
+    refs: ['Psalms 103'],
+    label: 'As a father has compassion',
+    note: 'A psalm to read when you fear God is mostly disappointed in you.'
+  }, {
+    refs: ['Isaiah 40'],
+    label: 'The everlasting God',
+    note: 'The One who measures the seas also gathers lambs in His arms.'
+  }, {
+    refs: ['Psalms 139'],
+    label: 'The God who knows you',
+    note: 'Fully known and fully held — there is nowhere His care cannot reach.'
+  }, {
+    refs: ['1 John 4'],
+    label: 'God is love',
+    note: 'Not that God is loving, but that love finds its very definition in Him.'
+  }, {
+    refs: ['Lamentations 3:19-33'],
+    label: 'New every morning',
+    note: 'Written from ruins, and still: His mercies are new each dawn.'
+  }, {
+    refs: ['Romans 8'],
+    label: 'Nothing can separate',
+    note: 'Read the last paragraph aloud, slowly. Let the list wash over you.'
+  }]
+}, {
+  id: 'anxious',
+  title: 'When You’re Anxious',
+  blurb: 'Comfort for a worried heart — passages to breathe with when fear rises.',
+  days: [{
+    refs: ['Matthew 6:25-34'],
+    label: 'Do not worry',
+    note: 'Consider the birds. You are not forgotten by the One who feeds them.'
+  }, {
+    refs: ['Philippians 4:4-9'],
+    label: 'The peace that guards you',
+    note: 'Not the absence of trouble, but a peace that stands watch over your heart.'
+  }, {
+    refs: ['Psalms 46'],
+    label: 'A very present help',
+    note: 'Be still. The refuge is not a place but a Person.'
+  }, {
+    refs: ['Psalms 34'],
+    label: 'He hears the cry',
+    note: 'The Lord is near to the brokenhearted — near, not merely aware.'
+  }, {
+    refs: ['1 Peter 5:6-11'],
+    label: 'Cast your care',
+    note: 'Hand Him the weight. He cares for you — that is why you can let go.'
+  }, {
+    refs: ['Isaiah 41:8-13'],
+    label: 'I will hold your hand',
+    note: 'Fear not — the God who upholds galaxies takes your right hand.'
+  }, {
+    refs: ['Psalms 121'],
+    label: 'Where my help comes from',
+    note: 'He neither slumbers nor sleeps. Your keeping does not depend on your vigilance.'
+  }]
+}, {
+  id: 'lastdays',
+  title: 'The Church & the Last Days',
+  blurb: 'Christ, prophecy, and hope — reading Daniel and Revelation with a steady heart.',
+  days: [{
+    refs: ['Daniel 2'],
+    label: 'The dream of kingdoms',
+    note: 'Empires rise and fall, but a kingdom is coming that will never end.'
+  }, {
+    refs: ['Daniel 7'],
+    label: 'The Son of Man',
+    note: 'Beyond the beasts and thrones, One like a son of man is given everlasting dominion.'
+  }, {
+    refs: ['Matthew 24'],
+    label: 'Signs of the end',
+    note: 'Jesus’ own words. Notice how often He says "do not be alarmed."'
+  }, {
+    refs: ['Revelation 1'],
+    label: 'Christ among the lampstands',
+    note: 'Before any prophecy, John simply sees the risen Jesus, and falls at His feet.'
+  }, {
+    refs: ['Revelation 2'],
+    label: 'Letters to the churches',
+    note: 'Real churches, real struggles — He knows each by name, and still calls them His.'
+  }, {
+    refs: ['Revelation 3'],
+    label: 'More letters to the churches',
+    note: '"I stand at the door and knock." Even in warning, He is seeking fellowship.'
+  }, {
+    refs: ['Revelation 14'],
+    label: 'The everlasting gospel',
+    note: 'In the middle of judgment, an angel carries good news to every nation.'
+  }, {
+    refs: ['Revelation 21'],
+    label: 'A new heaven and earth',
+    note: 'Every tear wiped away. Read this when the present feels too heavy.'
+  }, {
+    refs: ['Revelation 22'],
+    label: 'Come, Lord Jesus',
+    note: 'The Bible ends not with fear but with an invitation: "Come." Let anyone who is thirsty come.'
+  }]
+}, {
+  id: 'psalms',
+  title: 'Meeting God in the Psalms',
+  blurb: 'Ten psalms to pray your way through — the Bible’s own prayer book.',
+  days: [{
+    refs: ['Psalms 1'],
+    label: 'Two ways to live',
+    note: 'The blessed life is rooted, like a tree by water.'
+  }, {
+    refs: ['Psalms 8'],
+    label: 'What is man?',
+    note: 'Under a sky full of stars, and still God is mindful of you.'
+  }, {
+    refs: ['Psalms 27'],
+    label: 'The one thing I ask',
+    note: 'Confidence and longing in one breath — to dwell with Him.'
+  }, {
+    refs: ['Psalms 42'],
+    label: 'As the deer pants',
+    note: 'For the days your soul is downcast — honest thirst is still worship.'
+  }, {
+    refs: ['Psalms 51'],
+    label: 'Create in me a clean heart',
+    note: 'The prayer after failure. Mercy is bigger than your worst day.'
+  }, {
+    refs: ['Psalms 63'],
+    label: 'My soul thirsts for You',
+    note: 'A psalm from the wilderness — satisfaction found in God alone.'
+  }, {
+    refs: ['Psalms 91'],
+    label: 'Under His wings',
+    note: 'Shelter and refuge for the frightened. Dwell here awhile.'
+  }, {
+    refs: ['Psalms 121'],
+    label: 'I lift my eyes',
+    note: 'A traveler’s psalm — the Lord keeps your going out and coming in.'
+  }, {
+    refs: ['Psalms 139'],
+    label: 'Search me and know me',
+    note: 'To be fully known and still fully loved.'
+  }, {
+    refs: ['Psalms 145'],
+    label: 'I will exalt You',
+    note: 'End in praise — the Lord is near to all who call on Him.'
+  }]
+}, {
+  id: 'story',
+  title: 'The Story of the Whole Bible',
+  blurb: 'The grand arc in ten stops — how the whole thing fits together.',
+  days: [{
+    refs: ['Genesis 1', 'Genesis 2'],
+    label: 'In the beginning',
+    note: 'A good world, made in love, and a God who calls it very good.'
+  }, {
+    refs: ['Genesis 3'],
+    label: 'The break',
+    note: 'How everything went wrong — and the first whisper of a rescue.'
+  }, {
+    refs: ['Genesis 12:1-9'],
+    label: 'A promise to Abraham',
+    note: 'Through one family, God begins to bless the whole world.'
+  }, {
+    refs: ['Exodus 14'],
+    label: 'Rescue at the sea',
+    note: 'The God who hears slaves and makes a way where there is none.'
+  }, {
+    refs: ['2 Samuel 7'],
+    label: 'A king and a promise',
+    note: 'A throne that will last forever — pointing beyond David to One greater.'
+  }, {
+    refs: ['Isaiah 53'],
+    label: 'The suffering servant',
+    note: 'Written centuries before — wounded for our transgressions.'
+  }, {
+    refs: ['Luke 2:1-20'],
+    label: 'God with us',
+    note: 'The promise, in flesh, in a manger. The story turns here.'
+  }, {
+    refs: ['Luke 24'],
+    label: 'Risen, on the Emmaus road',
+    note: 'He opens the Scriptures and shows how all of it was about Him.'
+  }, {
+    refs: ['Acts 2'],
+    label: 'The church is born',
+    note: 'The Spirit falls, and the good news begins to run to the ends of the earth.'
+  }, {
+    refs: ['Revelation 21', 'Revelation 22'],
+    label: 'All things new',
+    note: 'The story’s end: God dwelling with His people, every tear wiped away.'
+  }]
+}];
+function planType(p) {
+  return p && p.type || 'bible';
+}
+function planTitle(p) {
+  if (!p) return '';
+  if (planType(p) === 'bible') {
+    const o = (PLAN_ORDERS.find(x => x[0] === p.order) || [])[1] || 'The whole Bible';
+    return p.title || 'The whole Bible · ' + o;
+  }
+  return p.title || 'Reading journey';
+}
+function planSchedule(p) {
+  if (!p) return [];
+  if (planType(p) === 'bible') return buildSchedule(p.order, +p.dur);
+  return p.days || [];
+}
+async function buildPlanAI(settings, profile, question) {
+  const sys = guardSystem(profile);
+  const u = `She wants a short, guided Bible reading plan on this: "${question}"\nBuild a focused plan of 5-10 daily readings that trace this theme honestly through Scripture (across both Testaments where it fits). Prefer whole chapters or well-known passages.\nReturn ONLY valid JSON — no markdown fences, no commentary — exactly: {"title":"5-8 words","days":[{"refs":["Book Chapter","Book Chapter:Verses"],"label":"3-6 words","note":"one warm sentence on what to notice"}]}\nEvery ref must be a real passage contained within ONE chapter, using common English book names (e.g. "John 3", "1 Kings 19:1-9"). 1-2 refs per day. Do not invent books or chapters.`;
+  const out = await callClaude(settings, sys, u);
+  const clean = out.replace(/```json|```/g, '').trim();
+  const obj = JSON.parse(clean.slice(clean.indexOf('{'), clean.lastIndexOf('}') + 1));
+  const days = (Array.isArray(obj.days) ? obj.days : []).map(d => ({
+    refs: (Array.isArray(d.refs) ? d.refs : []).map(String).filter(r => parseRef(r)),
+    label: String(d.label || 'Reading').slice(0, 60),
+    note: String(d.note || '').slice(0, 220)
+  })).filter(d => d.refs.length).slice(0, 10);
+  return {
+    title: String(obj.title || question).slice(0, 70),
+    days
+  };
+}
 
 /* ============ assessments ============ */
 const PATHWAYS = [["naturalist", "Naturalist", "Loving God outdoors, among created things"], ["sensate", "Sensate", "Loving God through the senses and beauty"], ["traditionalist", "Traditionalist", "Loving God through ritual and rhythm"], ["ascetic", "Ascetic", "Loving God in solitude and simplicity"], ["activist", "Activist", "Loving God through action and justice"], ["caregiver", "Caregiver", "Loving God by caring for others"], ["enthusiast", "Enthusiast", "Loving God with celebration and mystery"], ["contemplative", "Contemplative", "Loving God through adoration and presence"], ["intellectual", "Intellectual", "Loving God with the mind"]];
@@ -792,6 +1091,7 @@ function blank() {
     friends: {},
     customFriends: [],
     recent: [],
+    pausedPlans: [],
     settings: {
       translation: DEFAULT_TRANSLATION,
       bibleKey: DEFAULT_BIBLE_KEY,
@@ -861,6 +1161,17 @@ function mergeData(cur, inc) {
     customFriends,
     recent: [...new Set([...(c.recent || []), ...(i.recent || [])])].slice(0, 12),
     plan: planPick,
+    pausedPlans: (() => {
+      const m = new Map();
+      [...(c.pausedPlans || []), ...(i.pausedPlans || [])].forEach(p => {
+        if (p) {
+          const k = (p.title || '') + '|' + (p.type || 'bible') + '|' + (p.started || '');
+          const pr = m.get(k);
+          if (!pr || (p.index || 0) > (pr.index || 0)) m.set(k, p);
+        }
+      });
+      return [...m.values()];
+    })(),
     welcomed: c.welcomed || i.welcomed,
     settings: c.settings // keep THIS device's settings (keys, translation, font)
   };
@@ -2269,7 +2580,7 @@ function Home({
     onClick: () => go('planSetup')
   }, /*#__PURE__*/React.createElement("span", {
     className: "rune"
-  }, "▢"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("h3", null, "Read through the Bible"), /*#__PURE__*/React.createElement("p", null, "Move through Scripture at your own pace — a plan that waits for you and never rushes."))), /*#__PURE__*/React.createElement("div", {
+  }, "▢"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("h3", null, "Follow a reading plan"), /*#__PURE__*/React.createElement("p", null, "A guided journey, a question you want to explore, or the whole Bible — at your own pace."))), /*#__PURE__*/React.createElement("div", {
     className: "stat-strip"
   }, /*#__PURE__*/React.createElement("div", {
     className: "stat"
@@ -2321,11 +2632,11 @@ function PlanCard({
   db,
   go
 }) {
-  const sch = buildSchedule(db.plan.order, +db.plan.dur);
+  const sch = planSchedule(db.plan);
   const done = db.plan.index >= sch.length;
-  const idx = Math.min(db.plan.index, sch.length - 1);
-  const pct = Math.round(db.plan.index / sch.length * 100);
-  const ordLabel = (PLAN_ORDERS.find(o => o[0] === db.plan.order) || [])[1] || '';
+  const idx = Math.min(db.plan.index, Math.max(sch.length - 1, 0));
+  const pct = sch.length ? Math.round(db.plan.index / sch.length * 100) : 0;
+  const kind = planType(db.plan) === 'bible' ? 'Reading plan' : planType(db.plan) === 'ai' ? 'Your reading path' : 'Journey';
   return /*#__PURE__*/React.createElement("button", {
     className: "door settle",
     style: {
@@ -2344,7 +2655,7 @@ function PlanCard({
     style: {
       color: 'var(--gilt)'
     }
-  }, "Reading plan · ", ordLabel), /*#__PURE__*/React.createElement("span", {
+  }, kind, " · ", planTitle(db.plan)), /*#__PURE__*/React.createElement("span", {
     className: "muted",
     style: {
       fontSize: 12
@@ -2354,7 +2665,7 @@ function PlanCard({
       margin: '6px 0 9px',
       fontSize: 18
     }
-  }, done ? 'You\u2019ve read the whole Bible \u2014 hallelujah.' : 'Today: ' + sch[idx].label), /*#__PURE__*/React.createElement("div", {
+  }, done ? 'Finished — hallelujah.' : 'Today: ' + (sch[idx] ? sch[idx].label : '')), /*#__PURE__*/React.createElement("div", {
     className: "prog"
   }, /*#__PURE__*/React.createElement("i", {
     style: {
@@ -2372,20 +2683,88 @@ function PlanSetup({
   go,
   toast
 }) {
-  const [order, setOrder] = useState(db.plan ? db.plan.order : 'canonical');
-  const [dur, setDur] = useState(db.plan ? db.plan.dur : '365');
-  function begin() {
+  const [order, setOrder] = useState(db.plan && planType(db.plan) === 'bible' ? db.plan.order : 'canonical');
+  const [dur, setDur] = useState(db.plan && planType(db.plan) === 'bible' ? db.plan.dur : '365');
+  const [q, setQ] = useState('');
+  const [building, setBuilding] = useState(false);
+  const [buildErr, setBuildErr] = useState('');
+  const [showWhole, setShowWhole] = useState(false);
+  const hasAI = !!db.settings.aiKey;
+  const paused = db.pausedPlans || [];
+  function startPlan(planObj) {
+    // preserve an in-progress current plan by pausing it (don't nuke)
+    const keep = db.plan && db.plan.index > 0 ? [{
+      ...db.plan,
+      pausedAt: new Date().toISOString()
+    }, ...paused] : paused;
     save({
       ...db,
       plan: {
-        order,
-        dur,
+        ...planObj,
         index: 0,
         started: new Date().toISOString()
-      }
+      },
+      pausedPlans: keep
     });
-    toast('Your plan begins');
+    if (db.plan && db.plan.index > 0) toast('Your previous plan was set aside');
     go('plan');
+  }
+  function beginWhole() {
+    startPlan({
+      type: 'bible',
+      order,
+      dur,
+      title: 'The whole Bible · ' + ((PLAN_ORDERS.find(o => o[0] === order) || [])[1] || '')
+    });
+  }
+  function startJourney(j) {
+    startPlan({
+      type: 'journey',
+      journeyId: j.id,
+      title: j.title,
+      days: j.days
+    });
+  }
+  async function askBible() {
+    const question = q.trim();
+    if (!question || building) return;
+    setBuildErr('');
+    setBuilding(true);
+    try {
+      const plan = await buildPlanAI(db.settings, db.profile, question);
+      if (!plan.days.length) {
+        setBuildErr('I couldn\u2019t shape that into a plan — try naming the theme a little differently.');
+      } else startPlan({
+        type: 'ai',
+        title: plan.title,
+        days: plan.days,
+        question
+      });
+    } catch (e) {
+      setBuildErr('Could not build a plan right now — ' + e.message);
+    }
+    setBuilding(false);
+  }
+  function resumePaused(i) {
+    const p = paused[i];
+    const rest = paused.filter((_, j) => j !== i);
+    const keep = db.plan && db.plan.index > 0 ? [{
+      ...db.plan,
+      pausedAt: new Date().toISOString()
+    }, ...rest] : rest;
+    save({
+      ...db,
+      plan: p,
+      pausedPlans: keep
+    });
+    go('plan');
+  }
+  function deletePaused(i) {
+    const p = paused[i];
+    if (window.confirm('Delete "' + planTitle(p) + '"? Your Scripture map and journal stay.')) save({
+      ...db,
+      pausedPlans: paused.filter((_, j) => j !== i)
+    });
   }
   return /*#__PURE__*/React.createElement("div", {
     className: "wrap settle"
@@ -2397,23 +2776,108 @@ function PlanSetup({
     }
   }, "← ", db.plan ? 'Back to my plan' : 'Home'), /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"
-  }, "Reading plan"), /*#__PURE__*/React.createElement("h2", {
+  }, "Reading plans"), /*#__PURE__*/React.createElement("h2", {
     className: "display",
     style: {
       fontSize: 26,
       fontWeight: 600,
       margin: '6px 0 4px'
     }
-  }, "Read through the Bible, your way"), /*#__PURE__*/React.createElement("p", {
+  }, "How would you like to read?"), /*#__PURE__*/React.createElement("p", {
     className: "serif muted",
     style: {
-      fontSize: 16
+      fontSize: 15.5
     }
-  }, "Choose how you'd like to move and how long you'd like to take. There's no calendar and no falling behind — the plan simply waits, and picks up wherever you left off."), /*#__PURE__*/React.createElement("label", {
-    className: "field",
+  }, "Follow a theme, ask a question of Scripture, or read the whole Bible through. There's no calendar and no falling behind — a plan simply waits, and picks up where you left off."), db.plan && /*#__PURE__*/React.createElement("button", {
+    className: "door settle",
     style: {
-      marginTop: 18
+      width: '100%',
+      textAlign: 'left',
+      margin: '16px 0 4px',
+      borderColor: 'var(--gilt-2)'
+    },
+    onClick: () => go('plan')
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "rune"
+  }, "✎"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("h3", null, "Continue: ", planTitle(db.plan)), /*#__PURE__*/React.createElement("p", null, "Day ", db.plan.index + 1, " of ", planSchedule(db.plan).length, " · pick up where you left off"))), hasAI && /*#__PURE__*/React.createElement("div", {
+    className: "card",
+    style: {
+      padding: '18px 18px 16px',
+      margin: '18px 0'
     }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "eyebrow",
+    style: {
+      color: 'var(--gilt)'
+    }
+  }, "✨ Ask the Bible a question"), /*#__PURE__*/React.createElement("p", {
+    className: "serif muted",
+    style: {
+      fontSize: 13.5,
+      margin: '5px 0 10px'
+    }
+  }, "Name what you want to understand — \"who is Jesus,\" \"the churches in the end times,\" \"God's promises when I'm afraid\" — and I'll build you a guided reading path through Scripture."), /*#__PURE__*/React.createElement(MicField, {
+    rows: 2,
+    value: q,
+    onValue: setQ,
+    placeholder: "What do you want to explore in the Word?"
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 10
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn gilt sm",
+    disabled: building,
+    onClick: askBible
+  }, building ? 'Building your path…' : '\u2728 Build my reading path')), buildErr && /*#__PURE__*/React.createElement("p", {
+    className: "serif",
+    style: {
+      fontSize: 13.5,
+      color: 'var(--rose)',
+      marginTop: 10
+    }
+  }, buildErr)), !hasAI && /*#__PURE__*/React.createElement("div", {
+    className: "keyhint",
+    style: {
+      margin: '18px 0'
+    }
+  }, "With an Anthropic key (Settings), you can ask a question — \"who is Jesus,\" \"the end-time church\" — and I'll build a custom reading path on it. The journeys below work with no key at all."), /*#__PURE__*/React.createElement("label", {
+    className: "field"
+  }, "Guided journeys"), /*#__PURE__*/React.createElement("p", {
+    className: "serif muted",
+    style: {
+      fontSize: 13,
+      margin: '2px 0 10px'
+    }
+  }, "Curated paths on one theme — a finite walk, not the whole Bible."), /*#__PURE__*/React.createElement("div", null, JOURNEYS.map(j => /*#__PURE__*/React.createElement("button", {
+    key: j.id,
+    className: "door settle",
+    style: {
+      width: '100%',
+      textAlign: 'left',
+      marginBottom: 10
+    },
+    onClick: () => startJourney(j)
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "rune"
+  }, "❀"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("h3", null, j.title), /*#__PURE__*/React.createElement("p", null, j.blurb, " · ", j.days.length, " days"))))), /*#__PURE__*/React.createElement("div", {
+    className: "rule"
+  }), /*#__PURE__*/React.createElement("button", {
+    className: "door settle",
+    style: {
+      width: '100%',
+      textAlign: 'left'
+    },
+    onClick: () => setShowWhole(s => !s)
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "rune"
+  }, "⚲"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("h3", null, "Read the whole Bible ", showWhole ? '\u2013' : '+'), /*#__PURE__*/React.createElement("p", null, "Every chapter, at your own pace — Genesis to Revelation."))), showWhole && /*#__PURE__*/React.createElement("div", {
+    className: "settle",
+    style: {
+      marginTop: 12
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "field"
   }, "How to move through it"), /*#__PURE__*/React.createElement("div", null, PLAN_ORDERS.map(([v, label, desc]) => /*#__PURE__*/React.createElement("button", {
     key: v,
     className: "door",
@@ -2436,7 +2900,13 @@ function PlanSetup({
       fontSize: 13,
       color: 'var(--ink-soft)'
     }
-  }, desc)))), /*#__PURE__*/React.createElement("label", {
+  }, desc)))), order === 'mix' && /*#__PURE__*/React.createElement("p", {
+    className: "serif muted",
+    style: {
+      fontSize: 12.5,
+      margin: '2px 0 8px'
+    }
+  }, "The daily mix gives you a portion of the Old Testament and a Psalm every day, with the New Testament woven throughout — variety in every sitting, all the way to the end. The three readings aren't tied together by theme; they simply keep you moving through the whole Bible with something fresh each day."), /*#__PURE__*/React.createElement("label", {
     className: "field",
     style: {
       marginTop: 12
@@ -2453,18 +2923,59 @@ function PlanSetup({
     }
   }, planPace(dur), " ", order === 'chronological' ? 'Chronological order is arranged by book — a close approximation, not verse-perfect.' : ''), /*#__PURE__*/React.createElement("div", {
     style: {
-      marginTop: 18,
-      display: 'flex',
-      gap: 10,
-      flexWrap: 'wrap'
+      marginTop: 16
     }
   }, /*#__PURE__*/React.createElement("button", {
     className: "btn gilt",
-    onClick: begin
-  }, db.plan ? 'Restart with these' : 'Begin the plan'), db.plan && /*#__PURE__*/React.createElement("button", {
-    className: "btn ghost",
-    onClick: () => go('plan')
-  }, "Keep my current plan")));
+    onClick: beginWhole
+  }, "Begin the whole-Bible plan"))), paused.length > 0 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    className: "rule"
+  }), /*#__PURE__*/React.createElement("label", {
+    className: "field"
+  }, "Set aside for now"), /*#__PURE__*/React.createElement("p", {
+    className: "serif muted",
+    style: {
+      fontSize: 13,
+      margin: '2px 0 10px'
+    }
+  }, "Plans you paused — your place is saved. Resume anytime."), paused.map((p, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    className: "door",
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+      marginBottom: 10
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("h3", {
+    style: {
+      fontSize: 15.5,
+      margin: 0
+    }
+  }, planTitle(p)), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: '2px 0 0',
+      fontSize: 12.5,
+      color: 'var(--ink-soft)'
+    }
+  }, "Day ", p.index + 1, " of ", planSchedule(p).length)), /*#__PURE__*/React.createElement("span", {
+    style: {
+      display: 'flex',
+      gap: 6,
+      flexShrink: 0
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn gilt sm",
+    onClick: () => resumePaused(i)
+  }, "Resume"), /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost sm",
+    onClick: () => deletePaused(i)
+  }, "Delete"))))));
 }
 function PlanView({
   db,
@@ -2473,19 +2984,20 @@ function PlanView({
   toast,
   startEncounter
 }) {
-  const sch = buildSchedule(db.plan.order, +db.plan.dur);
+  const sch = planSchedule(db.plan);
   const done = db.plan.index >= sch.length;
-  const idx = Math.min(db.plan.index, sch.length - 1);
+  const idx = Math.min(db.plan.index, Math.max(sch.length - 1, 0));
   const day = sch[idx];
   const [texts, setTexts] = useState(null);
   const [loading, setLoading] = useState(!done);
   const [err, setErr] = useState('');
   useEffect(() => {
-    if (done) {
+    if (done || !day) {
       setLoading(false);
       return;
     }
     let live = true;
+    setLoading(true);
     (async () => {
       try {
         const results = [];
@@ -2532,14 +3044,43 @@ function PlanView({
     window.scrollTo(0, 0);
   }
   function pausePlan() {
-    if (window.confirm('Set this plan aside? Your progress on the Scripture map stays — you can start fresh anytime.')) {
+    if (!window.confirm('Set this plan aside? Your place is saved — resume it anytime from Reading plans.')) return;
+    const keep = db.plan.index > 0 ? [{
+      ...db.plan,
+      pausedAt: new Date().toISOString()
+    }, ...(db.pausedPlans || [])] : db.pausedPlans || [];
+    save({
+      ...db,
+      plan: null,
+      pausedPlans: keep
+    });
+    toast('Set aside — resume anytime');
+    go('home');
+  }
+  function restartPlan() {
+    if (window.confirm('Start this plan over from Day 1? Your Scripture map keeps every chapter you\u2019ve already read.')) {
+      save({
+        ...db,
+        plan: {
+          ...db.plan,
+          index: 0
+        }
+      });
+      toast('Back to Day 1');
+      window.scrollTo(0, 0);
+    }
+  }
+  function deletePlan() {
+    if (window.confirm('Delete this plan and its place? Your Scripture map and journal stay.')) {
       save({
         ...db,
         plan: null
       });
+      toast('Plan deleted');
       go('home');
     }
   }
+  const isBible = planType(db.plan) === 'bible';
   if (done) return /*#__PURE__*/React.createElement("div", {
     className: "wrap settle"
   }, /*#__PURE__*/React.createElement("div", {
@@ -2562,13 +3103,13 @@ function PlanView({
       fontWeight: 600,
       margin: '0 0 8px'
     }
-  }, "You've read through the whole Bible."), /*#__PURE__*/React.createElement("p", {
+  }, isBible ? 'You\u2019ve read through the whole Bible.' : 'You\u2019ve finished ' + planTitle(db.plan) + '.'), /*#__PURE__*/React.createElement("p", {
     className: "serif",
     style: {
       fontSize: 17.5,
       lineHeight: 1.6
     }
-  }, "Every chapter, one moment at a time. Hallelujah."), /*#__PURE__*/React.createElement("div", {
+  }, isBible ? 'Every chapter, one moment at a time. Hallelujah.' : 'Well walked — one passage at a time. Hallelujah.'), /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 18,
       display: 'flex',
@@ -2578,23 +3119,27 @@ function PlanView({
     }
   }, /*#__PURE__*/React.createElement("button", {
     className: "btn gilt",
-    onClick: () => go('planSetup')
-  }, "Begin a new plan"), /*#__PURE__*/React.createElement("button", {
+    onClick: restartPlan
+  }, "Read it again"), /*#__PURE__*/React.createElement("button", {
     className: "btn ghost",
-    onClick: () => go('home')
-  }, "Home"))));
-  const pct = Math.round(db.plan.index / sch.length * 100);
+    onClick: () => go('planSetup')
+  }, "Choose another plan"), /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost",
+    onClick: deletePlan
+  }, "Done for now"))));
+  const pct = sch.length ? Math.round(db.plan.index / sch.length * 100) : 0;
   return /*#__PURE__*/React.createElement("div", {
     className: "wrap settle"
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
       justifyContent: 'space-between',
-      alignItems: 'baseline'
+      alignItems: 'baseline',
+      gap: 8
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"
-  }, "Reading plan · Day ", db.plan.index + 1, " of ", sch.length), /*#__PURE__*/React.createElement("button", {
+  }, planTitle(db.plan), " · Day ", db.plan.index + 1, " of ", sch.length), /*#__PURE__*/React.createElement("button", {
     className: "btn ghost sm",
     onClick: pausePlan
   }, "Set aside")), /*#__PURE__*/React.createElement("div", {
@@ -2613,7 +3158,13 @@ function PlanView({
       fontWeight: 600,
       margin: '10px 0 4px'
     }
-  }, "Today: ", day.label), /*#__PURE__*/React.createElement("p", {
+  }, "Today: ", day.label), day.note ? /*#__PURE__*/React.createElement("p", {
+    className: "serif muted",
+    style: {
+      fontSize: 15,
+      lineHeight: 1.55
+    }
+  }, day.note) : /*#__PURE__*/React.createElement("p", {
     className: "serif muted",
     style: {
       fontSize: 15
@@ -2673,7 +3224,28 @@ function PlanView({
       fontSize: 12.5,
       marginTop: 14
     }
-  }, "Missed a few days? Nothing's lost — you're on day ", db.plan.index + 1, ", right where you left off."));
+  }, "Missed a few days? Nothing's lost — you're on day ", db.plan.index + 1, ", right where you left off."), /*#__PURE__*/React.createElement("div", {
+    className: "rule"
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 14,
+      flexWrap: 'wrap',
+      justifyContent: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost sm",
+    onClick: () => go('planSetup')
+  }, "Switch plan"), /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost sm",
+    onClick: restartPlan
+  }, "Restart from Day 1"), /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost sm",
+    onClick: deletePlan,
+    style: {
+      color: 'var(--rose)'
+    }
+  }, "Delete plan")));
 }
 
 /* ============ Meet me / Analog pickers ============ */
