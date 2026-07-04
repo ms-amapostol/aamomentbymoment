@@ -1092,6 +1092,7 @@ function blank() {
     customFriends: [],
     recent: [],
     pausedPlans: [],
+    draft: null,
     settings: {
       translation: DEFAULT_TRANSLATION,
       bibleKey: DEFAULT_BIBLE_KEY,
@@ -1644,10 +1645,23 @@ function MicField({
 }) {
   const [rec, setRec] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [showTip, setShowTip] = useState(false);
   const recRef = useRef(null);
   const baseRef = useRef('');
   const primedRef = useRef(false);
   const SR = !MIC_DISABLED && typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition);
+  function micIntroSeen() {
+    try {
+      return localStorage.getItem('mbm_mic_intro') === '1';
+    } catch (e) {
+      return true;
+    }
+  }
+  function markMicIntro() {
+    try {
+      localStorage.setItem('mbm_mic_intro', '1');
+    } catch (e) {}
+  }
   async function toggle() {
     if (!SR) return;
     if (rec) {
@@ -1657,6 +1671,11 @@ function MicField({
       return;
     }
     if (starting) return;
+    if (!micIntroSeen()) {
+      markMicIntro();
+      setShowTip(true);
+      return;
+    } // one-time heads-up before first real use
     setStarting(true);
     // Prime the mic permission FIRST and wait for it to settle, so the recognizer
     // never starts mid-prompt (the cause of the first-use stall on iOS/Safari).
@@ -1779,7 +1798,39 @@ function MicField({
       fontWeight: 600,
       pointerEvents: 'none'
     }
-  }, rec ? 'listening…' : 'starting…'));
+  }, rec ? 'listening…' : 'starting…'), showTip && /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'absolute',
+      right: 0,
+      top: 44,
+      zIndex: 20,
+      width: 'min(280px,86vw)',
+      background: 'var(--vespers)',
+      color: '#eaf1f8',
+      borderRadius: 12,
+      padding: '13px 15px',
+      boxShadow: '0 10px 30px rgba(15,36,64,.35)'
+    }
+  }, /*#__PURE__*/React.createElement("b", {
+    style: {
+      fontSize: 13.5,
+      color: 'var(--gilt-glow)'
+    }
+  }, "🎤 Speaking your reflection"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12.8,
+      lineHeight: 1.5,
+      margin: '6px 0 0'
+    }
+  }, "Tap the mic and talk — your words become text as you go. The very first time, your phone will ask permission, and the mic may not catch right away. If it seems stuck, just tap it once more and it'll start listening."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 10,
+      textAlign: 'right'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn gilt sm",
+    onClick: () => setShowTip(false)
+  }, "Got it"))));
 }
 function Passage({
   data
@@ -2491,6 +2542,7 @@ function Home({
   db,
   go,
   startEncounter,
+  resumeEncounter,
   showAiNudge,
   onDismissNudge
 }) {
@@ -2500,13 +2552,26 @@ function Home({
   const answered = db.prayers.filter(x => x.answered).length;
   const hr = new Date().getHours();
   const salut = hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
+  const STAGE_NAMES = ['', 'in prayer', 'reading', 'entering the story', 'reflecting', 'responding'];
   return /*#__PURE__*/React.createElement("div", {
     className: "wrap"
   }, /*#__PURE__*/React.createElement("div", {
     className: "greet settle"
   }, /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"
-  }, salut), /*#__PURE__*/React.createElement("h2", null, p.name, ", where shall we meet God today?")), showAiNudge && /*#__PURE__*/React.createElement("div", {
+  }, salut), /*#__PURE__*/React.createElement("h2", null, p.name, ", where shall we meet God today?")), db.draft && /*#__PURE__*/React.createElement("button", {
+    className: "door settle",
+    style: {
+      width: '100%',
+      textAlign: 'left',
+      margin: '0 0 18px',
+      borderColor: 'var(--gilt-2)',
+      background: 'rgba(25,130,123,.05)'
+    },
+    onClick: resumeEncounter
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "rune"
+  }, "✎"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("h3", null, "Continue your reflection"), /*#__PURE__*/React.createElement("p", null, db.draft.label ? db.draft.label + ' · ' : '', "you were ", STAGE_NAMES[db.draft.stage] || 'in the middle', " — pick up where you left off."))), showAiNudge && /*#__PURE__*/React.createElement("div", {
     className: "settle",
     style: {
       background: 'linear-gradient(160deg,var(--vespers-2),var(--vespers))',
@@ -3430,23 +3495,28 @@ function Encounter({
   db,
   save,
   toast,
-  go
+  go,
+  draft,
+  onStartOver
 }) {
-  const [stage, setStage] = useState(0); // 0 loading,1 pray,2 read,3 enter,4 reflect,5 walk,6 respond
-  const [passage, setPassage] = useState(null);
-  const [story, setStory] = useState(null);
+  const D = draft && draft.mode === mode ? draft : null;
+  const dbRef = useRef(db);
+  dbRef.current = db;
+  const [stage, setStage] = useState(D ? D.stage : 0); // 0 loading,1 pray,2 read,3 enter,4 reflect,5 respond
+  const [passage, setPassage] = useState(D ? D.passage : null);
+  const [story, setStory] = useState(D ? D.story : null);
   const [err, setErr] = useState('');
-  const [understand, setUnderstand] = useState('');
-  const [understandTerms, setUnderstandTerms] = useState([]);
+  const [understand, setUnderstand] = useState(D ? D.understand : '');
+  const [understandTerms, setUnderstandTerms] = useState(D ? D.understandTerms || [] : []);
   const [uLoading, setULoading] = useState(false);
-  const [questions, setQuestions] = useState([]);
-  const [answers, setAnswers] = useState(['', '', '', '']);
-  const [convo, setConvo] = useState([]); // [{role:'ai'|'me', text}]
-  const [convoInput, setConvoInput] = useState('');
+  const [questions, setQuestions] = useState(D ? D.questions || [] : []);
+  const [answers, setAnswers] = useState(D ? D.answers || ['', '', '', ''] : ['', '', '', '']);
+  const [convo, setConvo] = useState(D ? D.convo || [] : []); // [{role:'ai'|'me', text}]
+  const [convoInput, setConvoInput] = useState(D ? D.convoInput || '' : '');
   const [convoLoading, setConvoLoading] = useState(false);
-  const [apply, setApply] = useState('');
-  const [prayer, setPrayer] = useState('');
-  const [pickVerses, setPickVerses] = useState(() => new Set());
+  const [apply, setApply] = useState(D ? D.apply || '' : '');
+  const [prayer, setPrayer] = useState(D ? D.prayer || '' : '');
+  const [pickVerses, setPickVerses] = useState(() => new Set(D ? D.pickVerses || [] : []));
   const struggle = arg && arg.struggle || '';
   const hasAI = !!db.settings.aiKey;
   const isFriend = mode === 'friend';
@@ -3454,6 +3524,9 @@ function Encounter({
   const scene = friend ? friend.scenes[arg.sceneIndex] : null;
   const sceneCtx = scene ? `${friend.name} — ${scene.title}. ${scene.note}` : story && story.note ? (story.title ? story.title + ' — ' : '') + story.note : '';
   useEffect(() => {
+    if (D) {
+      return;
+    }
     (async () => {
       try {
         let ref,
@@ -3513,6 +3586,50 @@ function Encounter({
       }
     })();
   }, []);
+
+  // Silently auto-save an in-progress reflection so leaving never loses it.
+  const draftTimer = useRef(null);
+  useEffect(() => {
+    if (stage < 1 || !passage) return; // nothing meaningful to keep yet
+    if (draftTimer.current) clearTimeout(draftTimer.current);
+    draftTimer.current = setTimeout(() => {
+      const d = {
+        mode,
+        arg,
+        stage,
+        passage,
+        story,
+        understand,
+        understandTerms,
+        questions,
+        answers,
+        convo,
+        convoInput,
+        apply,
+        prayer,
+        pickVerses: [...pickVerses],
+        savedAt: Date.now(),
+        label: passage && passage.reference || ''
+      };
+      try {
+        save({
+          ...dbRef.current,
+          draft: d
+        });
+      } catch (e) {}
+    }, 700);
+    return () => {
+      if (draftTimer.current) clearTimeout(draftTimer.current);
+    };
+  }, [stage, understand, understandTerms, questions, answers, convo, convoInput, apply, prayer, pickVerses, passage, story]);
+  function clearDraft() {
+    try {
+      save({
+        ...dbRef.current,
+        draft: null
+      });
+    } catch (e) {}
+  }
   function refToChapters(data) {
     // best-effort: mark chapter(s) seen from reference like "John 3:16" or "Psalms 23"
     const p = parseRef(data.reference) || story && parseRef(story.reference);
@@ -3675,6 +3792,7 @@ function Encounter({
         [ch.book]: [...arr]
       };
     }
+    newDb.draft = null;
     save(newDb);
     toast('Kept in your journal');
     go('journal');
@@ -3709,25 +3827,51 @@ function Encounter({
     }
   }, "Turning to the page…"));
   const STEPS = ['Pray', 'Read', 'Enter', 'Reflect', 'Respond'];
+  const hasWork = convo.some(m => m.role === 'me') || convoInput.trim() || answers.some(a => a && a.trim()) || apply.trim() || prayer.trim() || pickVerses.size > 0;
   function leave() {
-    const hasWork = convo.some(m => m.role === 'me') || convoInput.trim() || answers.some(a => a && a.trim()) || apply.trim() || prayer.trim();
-    if (hasWork && !window.confirm("Leave this time with God? What you've written here so far won't be saved.")) return;
+    go('home');
+  } // draft is auto-saved; returning restores it
+  function discard() {
+    if (hasWork && !window.confirm('Start this reflection over? What you\u2019ve written here will be cleared.')) return;
+    clearDraft();
+    if (onStartOver) onStartOver(mode, arg);else go('home');
+  }
+  function leaveHome() {
+    clearDraft();
     go('home');
   }
   return /*#__PURE__*/React.createElement("div", {
     className: "wrap"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 12,
+      gap: 10
+    }
   }, /*#__PURE__*/React.createElement("button", {
     className: "btn ghost sm",
-    onClick: leave,
+    onClick: leave
+  }, "← Leave"), hasWork && /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost sm",
+    onClick: discard,
     style: {
-      marginBottom: 12
+      color: 'var(--ink-soft)'
     }
-  }, "← Leave"), /*#__PURE__*/React.createElement("div", {
+  }, "Start over")), /*#__PURE__*/React.createElement("div", {
     className: "steps"
   }, STEPS.map((s, i) => /*#__PURE__*/React.createElement("span", {
     key: s,
     className: 's ' + (i + 1 === stage ? 'on' : i + 1 < stage ? 'done' : '')
-  }, s))), /*#__PURE__*/React.createElement("div", {
+  }, s))), D && /*#__PURE__*/React.createElement("p", {
+    className: "serif muted",
+    style: {
+      fontSize: 12.5,
+      margin: '8px 0 0',
+      textAlign: 'center'
+    }
+  }, "Picked up right where you left off."), /*#__PURE__*/React.createElement("div", {
     className: "card",
     style: {
       padding: '22px 22px 24px'
@@ -4019,7 +4163,7 @@ function Encounter({
     onClick: commit
   }, "Keep this"), /*#__PURE__*/React.createElement("button", {
     className: "btn ghost",
-    onClick: leave
+    onClick: leaveHome
   }, "Discard")))), hasAI && /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 11.5,
@@ -5219,10 +5363,32 @@ function App() {
     });
   }
   function startEncounter(mode, arg) {
+    if (db.draft) save({
+      ...db,
+      draft: null
+    });
     setEnc({
       mode,
       arg,
       key: Date.now()
+    });
+    setView('encounter');
+  }
+  function startOver(mode, arg) {
+    setEnc({
+      mode,
+      arg,
+      key: Date.now()
+    });
+    setView('encounter');
+  }
+  function resumeEncounter() {
+    if (!db.draft) return;
+    setEnc({
+      mode: db.draft.mode,
+      arg: db.draft.arg,
+      key: Date.now(),
+      resume: true
     });
     setView('encounter');
   }
@@ -5292,6 +5458,7 @@ function App() {
     db: db,
     go: go,
     startEncounter: startEncounter,
+    resumeEncounter: resumeEncounter,
     showAiNudge: !db.settings.aiKey && !aiNudgeDismissed,
     onDismissNudge: () => setAiNudgeDismissed(true)
   }), view === 'meet' && /*#__PURE__*/React.createElement(MeetPicker, {
@@ -5330,7 +5497,9 @@ function App() {
     db: db,
     save: save,
     toast: toast,
-    go: go
+    go: go,
+    draft: enc.resume ? db.draft : null,
+    onStartOver: startOver
   }), view === 'journal' && /*#__PURE__*/React.createElement(Journal, {
     db: db,
     save: save,
