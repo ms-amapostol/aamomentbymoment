@@ -149,6 +149,11 @@
   }
   .passage sup{color:var(--gilt);font-size:.62em;font-weight:600;padding:0 3px 0 1px;vertical-align:super}
   .rule{height:1px;background:linear-gradient(90deg,transparent,var(--line),transparent);margin:28px 0}
+  .hl-hint{font-size:12px;color:var(--gilt);margin:2px 0 10px;font-weight:500}
+  .vhl{cursor:pointer;border-radius:5px;padding:1px 2px;margin:0 -2px;transition:background .15s,box-shadow .15s;-webkit-tap-highlight-color:transparent}
+  .vhl:hover{background:rgba(203,162,78,.14)}
+  .vhl.on{background:linear-gradient(180deg,rgba(203,162,78,.28),rgba(203,162,78,.34));box-shadow:0 0 0 1px rgba(203,162,78,.4)}
+  .vhl.on sup{color:var(--gold)}
 
   /* ---- stepper ---- */
   .steps{display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap}
@@ -1038,6 +1043,13 @@ function planSchedule(p) {
   if (planType(p) === 'bible') return buildSchedule(p.order, +p.dur);
   return p.days || [];
 }
+function planTopic(p) {
+  if (!p) return null;
+  const t = planType(p);
+  if (t === 'ai') return p.question || p.title || null;
+  if (t === 'journey') return p.title || null;
+  return null;
+}
 async function buildPlanAI(settings, profile, question) {
   const sys = guardSystem(profile);
   const u = `She wants a short, guided Bible reading plan on this: "${question}"\nBuild a focused plan of 5-10 daily readings that trace this theme honestly through Scripture (across both Testaments where it fits). Prefer whole chapters or well-known passages.\nReturn ONLY valid JSON — no markdown fences, no commentary — exactly: {"title":"5-8 words","days":[{"refs":["Book Chapter","Book Chapter:Verses"],"label":"3-6 words","note":"one warm sentence on what to notice"}]}\nEvery ref must be a real passage contained within ONE chapter, using common English book names (e.g. "John 3", "1 Kings 19:1-9"). 1-2 refs per day. Do not invent books or chapters.`;
@@ -1920,9 +1932,12 @@ function MicField({
   }, "Got it"))));
 }
 function Passage({
-  data
+  data,
+  picked,
+  onToggle
 }) {
   if (!data) return null;
+  const interactive = picked && onToggle && data.verses && !data.raw;
   const first = data.verses && data.verses.length ? data.verses[0].t : data.raw || '';
   const firstText = (first || '').trim();
   const li = firstText.search(/[A-Za-z0-9]/);
@@ -1936,14 +1951,18 @@ function Passage({
     className: "passage-ref"
   }, data.reference), /*#__PURE__*/React.createElement("div", {
     className: "passage-transl"
-  }, data.translation), /*#__PURE__*/React.createElement("div", {
+  }, data.translation), interactive && /*#__PURE__*/React.createElement("div", {
+    className: "hl-hint"
+  }, "Tap a verse to highlight it · highlighted verses come pre-selected when you keep Scripture"), /*#__PURE__*/React.createElement("div", {
     className: "passage"
   }, data.raw ? /*#__PURE__*/React.createElement("span", {
     dangerouslySetInnerHTML: {
       __html: data.raw
     }
   }) : data.verses.map((v, i) => /*#__PURE__*/React.createElement("span", {
-    key: i
+    key: i,
+    className: interactive ? 'vhl' + (picked.has(i) ? ' on' : '') : undefined,
+    onClick: interactive ? () => onToggle(i) : undefined
   }, i === 0 ? /*#__PURE__*/React.createElement(React.Fragment, null, lead, /*#__PURE__*/React.createElement("span", {
     className: "drop"
   }, drop), rest0) : /*#__PURE__*/React.createElement(React.Fragment, null, ' ', /*#__PURE__*/React.createElement("sup", null, v.v), v.t)))));
@@ -3161,12 +3180,210 @@ function PlanSetup({
     onClick: () => deletePaused(i)
   }, "Delete"))))));
 }
+function DiveDeeper({
+  db,
+  go,
+  arg
+}) {
+  const [passage, setPassage] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
+  const [convo, setConvo] = useState([]);
+  const [input, setInput] = useState('');
+  const [busy, setBusy] = useState(false);
+  const scroller = useRef(null);
+  const hasAI = !!db.settings.aiKey;
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      try {
+        const d = await fetchPassage(arg.refs[0], db.settings);
+        if (live) {
+          setPassage(d);
+          setLoading(false);
+          if (hasAI) openDive(d);
+        }
+      } catch (e) {
+        if (live) {
+          setErr(e.message);
+          setLoading(false);
+        }
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight;
+  }, [convo, busy]);
+  function passText(d) {
+    return d.verses ? d.verses.map(v => v.t).join(' ') : (d.raw || '').replace(/<[^>]+>/g, '');
+  }
+  function ctxMsg(d) {
+    return `Topic being explored: ${arg.topic || 'the meaning of this passage'}.\nToday's reading: ${d.reference}\nText: "${passText(d)}"\n${arg.label ? 'This reading is about: ' + arg.label + '. ' : ''}${arg.note || ''}`;
+  }
+  const topicSys = () => guardSystem(db.profile) + `\n\nRIGHT NOW you are helping her UNDERSTAND A TOPIC through Scripture: "${arg.topic || 'the meaning of this passage'}". Keep the focus on the topic and on what the passage actually means — its context, what is happening, the history and theology, how it illuminates the topic. This is NOT about her personal life or application unless she explicitly asks; do not steer toward "how does this apply to you." Teach clearly, faithfully, and humbly. Convey God's words only by quoting Scripture with references; never speak in God's voice or invent what He might say.`;
+  async function openDive(d) {
+    setBusy(true);
+    try {
+      const u = ctxMsg(d) + `\n\nOpen the door into this topic through the passage. In 120-170 words: unpack what this passage means and how it illuminates "${arg.topic || 'the theme'}" — the setting, what's happening, why it matters for understanding the topic. Teach it clearly. End with ONE inviting question that draws her deeper into the TOPIC (not her personal life).`;
+      setConvo([{
+        role: 'ai',
+        text: await callClaude(db.settings, topicSys(), u)
+      }]);
+    } catch (e) {
+      setConvo([{
+        role: 'ai',
+        text: '__ERR__' + e.message
+      }]);
+    }
+    setBusy(false);
+  }
+  async function send() {
+    const text = input.trim();
+    if (!text || busy) return;
+    const next = [...convo, {
+      role: 'me',
+      text
+    }];
+    setConvo(next);
+    setInput('');
+    setBusy(true);
+    try {
+      const msgs = [{
+        role: 'user',
+        content: ctxMsg(passage)
+      }];
+      next.forEach(m => {
+        if (!(m.role === 'ai' && m.text.startsWith('__ERR__'))) msgs.push({
+          role: m.role === 'ai' ? 'assistant' : 'user',
+          content: m.text
+        });
+      });
+      setConvo([...next, {
+        role: 'ai',
+        text: await callClaudeMessages(db.settings, topicSys(), msgs)
+      }]);
+    } catch (e) {
+      setConvo([...next, {
+        role: 'ai',
+        text: '__ERR__' + e.message
+      }]);
+    }
+    setBusy(false);
+  }
+  return /*#__PURE__*/React.createElement("div", {
+    className: "wrap settle"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost sm",
+    onClick: () => go('plan'),
+    style: {
+      marginBottom: 14
+    }
+  }, "← Back to my plan"), /*#__PURE__*/React.createElement("div", {
+    className: "eyebrow",
+    style: {
+      color: 'var(--gilt)'
+    }
+  }, "✨ Going deeper", arg.topic ? ' \u00b7 ' + arg.topic : ''), /*#__PURE__*/React.createElement("h2", {
+    className: "display",
+    style: {
+      fontSize: 24,
+      fontWeight: 600,
+      margin: '6px 0 4px'
+    }
+  }, loading ? 'Opening the passage…' : passage ? passage.reference : ''), /*#__PURE__*/React.createElement("p", {
+    className: "serif muted",
+    style: {
+      fontSize: 14.5,
+      lineHeight: 1.5,
+      marginTop: 2
+    }
+  }, "Unpacking what this passage means", arg.topic ? ' for understanding ' + arg.topic : '', " — together. Ask anything about the text, the history, or the meaning."), err && /*#__PURE__*/React.createElement("div", {
+    className: "keyhint",
+    style: {
+      marginTop: 14
+    }
+  }, "Couldn't load the reading: ", err), !hasAI && /*#__PURE__*/React.createElement("div", {
+    className: "keyhint",
+    style: {
+      marginTop: 14
+    }
+  }, "Diving deeper is guided live by Claude. Add your Anthropic key in Settings to explore the topic in conversation.", arg.note ? /*#__PURE__*/React.createElement("div", {
+    className: "serif",
+    style: {
+      marginTop: 8,
+      color: 'var(--ink)'
+    }
+  }, arg.note) : null), hasAI && /*#__PURE__*/React.createElement("div", {
+    ref: scroller,
+    style: {
+      marginTop: 16,
+      maxHeight: '52vh',
+      overflowY: 'auto',
+      paddingRight: 4
+    }
+  }, convo.map((m, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    style: {
+      margin: '0 0 12px',
+      display: 'flex',
+      justifyContent: m.role === 'me' ? 'flex-end' : 'flex-start'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: m.role === 'me' ? '' : 'serif',
+    style: {
+      maxWidth: '88%',
+      padding: '11px 14px',
+      borderRadius: m.role === 'me' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
+      background: m.role === 'me' ? 'var(--vespers)' : 'var(--parchment-card)',
+      color: m.role === 'me' ? '#f4efff' : 'var(--ink)',
+      border: m.role === 'me' ? 'none' : '1px solid var(--line)',
+      fontSize: m.role === 'me' ? 15 : 16,
+      lineHeight: 1.6,
+      whiteSpace: 'pre-wrap'
+    }
+  }, m.text.startsWith('__ERR__') ? /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: 'var(--rose)'
+    }
+  }, "Something went wrong: ", m.text.slice(7)) : m.text))), busy && /*#__PURE__*/React.createElement("p", {
+    className: "serif muted",
+    style: {
+      fontSize: 15
+    }
+  }, "Thinking with you…")), hasAI && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 12,
+      display: 'flex',
+      gap: 8,
+      alignItems: 'flex-end'
+    }
+  }, /*#__PURE__*/React.createElement(MicField, {
+    rows: 2,
+    value: input,
+    onValue: setInput,
+    placeholder: "Ask about the meaning, the context, the topic…",
+    style: {
+      flex: 1
+    }
+  }), /*#__PURE__*/React.createElement("button", {
+    className: "btn gilt",
+    disabled: !input.trim() || busy,
+    onClick: send,
+    style: {
+      flexShrink: 0
+    }
+  }, "Ask")));
+}
 function PlanView({
   db,
   save,
   go,
   toast,
-  startEncounter
+  startEncounter,
+  startDeepDive
 }) {
   const sch = planSchedule(db.plan);
   const done = db.plan.index >= sch.length;
@@ -3263,6 +3480,38 @@ function PlanView({
       toast('Plan deleted');
       go('home');
     }
+  }
+  // Split a long single-chapter reading into two shorter sittings (uses real verse numbers already fetched).
+  const canSplit = planType(db.plan) !== 'bible' && Array.isArray(db.plan.days) && day && day.refs.length === 1 && !day.refs[0].includes(':') && texts && texts[0] && texts[0].verses && texts[0].verses.length >= 14;
+  function splitReading() {
+    const d = texts[0];
+    const p = parseRef(day.refs[0]);
+    if (!d || !p) return;
+    const vs = d.verses;
+    const first = vs[0].v,
+      last = vs[vs.length - 1].v;
+    if (last - first < 3) return;
+    const mid = Math.floor((first + last) / 2);
+    const bookCh = p.book + ' ' + p.chapter;
+    const baseLabel = day.label || d.reference;
+    const arr = [...db.plan.days];
+    arr.splice(db.plan.index, 1, {
+      refs: [bookCh + ':' + first + '-' + mid],
+      label: baseLabel + ' \u00b7 part 1',
+      note: day.note
+    }, {
+      refs: [bookCh + ':' + (mid + 1) + '-' + last],
+      label: baseLabel + ' \u00b7 part 2'
+    });
+    save({
+      ...db,
+      plan: {
+        ...db.plan,
+        days: arr
+      }
+    });
+    toast('Split into two shorter sittings');
+    window.scrollTo(0, 0);
   }
   const isBible = planType(db.plan) === 'bible';
   if (done) return /*#__PURE__*/React.createElement("div", {
@@ -3387,22 +3636,79 @@ function PlanView({
     }
   }) : d.verses.map((v, j) => /*#__PURE__*/React.createElement("span", {
     key: j
-  }, /*#__PURE__*/React.createElement("sup", null, v.v), v.t, " "))))), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("sup", null, v.v), v.t, " "))))), canSplit && /*#__PURE__*/React.createElement("div", {
+    className: "keyhint",
     style: {
-      marginTop: 18,
+      marginTop: 14,
       display: 'flex',
-      gap: 10,
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
       flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "A longer reading today? You can take it in two shorter sittings."), /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost sm",
+    onClick: splitReading,
+    style: {
+      flexShrink: 0
+    }
+  }, "Split into two days")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 18
     }
   }, /*#__PURE__*/React.createElement("button", {
     className: "btn gilt",
-    onClick: markRead
-  }, "Mark as read →"), /*#__PURE__*/React.createElement("button", {
-    className: "btn ghost",
+    onClick: markRead,
+    style: {
+      marginBottom: 12
+    }
+  }, "Mark as read →"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'grid',
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "door settle",
+    style: {
+      width: '100%',
+      textAlign: 'left',
+      padding: '14px 16px'
+    },
+    onClick: () => startDeepDive({
+      refs: day.refs,
+      topic: planTopic(db.plan),
+      label: day.label,
+      note: day.note
+    })
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "rune",
+    style: {
+      fontSize: 24
+    }
+  }, "✨"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("h3", {
+    style: {
+      fontSize: 16
+    }
+  }, "Dive deeper into the topic"), /*#__PURE__*/React.createElement("p", null, "Unpack what this passage means", planTopic(db.plan) ? ' for ' + planTopic(db.plan) : '', " — explore the meaning and context together."))), /*#__PURE__*/React.createElement("button", {
+    className: "door settle",
+    style: {
+      width: '100%',
+      textAlign: 'left',
+      padding: '14px 16px'
+    },
     onClick: () => startEncounter('ref', {
       ref: day.refs[0]
     })
-  }, "Reflect on ", day.refs.length > 1 ? 'the first chapter' : 'this', " →")), /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "rune",
+    style: {
+      fontSize: 24
+    }
+  }, "✎"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("h3", {
+    style: {
+      fontSize: 16
+    }
+  }, "Reflect on my own life"), /*#__PURE__*/React.createElement("p", null, "Sit with how this passage meets you personally, and respond to God."))))), /*#__PURE__*/React.createElement("p", {
     className: "muted",
     style: {
       fontSize: 12.5,
@@ -4059,7 +4365,13 @@ In 2-4 warm sentences, as her companion closing this time together: FIRST gently
     className: "btn gilt",
     onClick: () => setStage(2)
   }, "Amen — open the Word →"))), stage >= 2 && /*#__PURE__*/React.createElement(Passage, {
-    data: passage
+    data: passage,
+    picked: stage === 2 ? pickVerses : undefined,
+    onToggle: stage === 2 ? i => {
+      const s = new Set(pickVerses);
+      s.has(i) ? s.delete(i) : s.add(i);
+      setPickVerses(s);
+    } : undefined
   }), stage === 2 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "rule"
   }), struggle && /*#__PURE__*/React.createElement("p", {
@@ -4313,7 +4625,7 @@ In 2-4 warm sentences, as her companion closing this time together: FIRST gently
       fontSize: 13.5,
       margin: '4px 0 10px'
     }
-  }, "Tap the verses that are feeding you — one, a few, or all. They're saved together to your banked Scripture."), passage.verses.map((v, i) => /*#__PURE__*/React.createElement("div", {
+  }, pickVerses.size > 0 ? 'The verses you highlighted while reading are already selected — adjust if you like. ' : 'Tap the verses that are feeding you — one, a few, or all. ', "They're saved together to your banked Scripture."), passage.verses.map((v, i) => /*#__PURE__*/React.createElement("div", {
     key: i,
     className: 'vpick' + (pickVerses.has(i) ? ' sel' : ''),
     onClick: () => {
@@ -5654,6 +5966,7 @@ function App() {
   const [db, setDb] = useState(() => load() || blank());
   const [view, setView] = useState('home');
   const [enc, setEnc] = useState(null);
+  const [deep, setDeep] = useState(null);
   const [toastMsg, setToastMsg] = useState('');
   const [loaded, setLoaded] = useState(!HAS_GAS);
   const [syncStatus, setSyncStatus] = useState('idle'); // idle|saving|saved|offline
@@ -5747,6 +6060,13 @@ function App() {
     });
     setView('encounter');
   }
+  function startDeepDive(arg) {
+    setDeep({
+      ...arg,
+      key: Date.now()
+    });
+    setView('deepdive');
+  }
   function startOver(mode, arg) {
     setEnc({
       mode,
@@ -5768,6 +6088,7 @@ function App() {
   function go(v) {
     setView(v);
     if (v !== 'encounter') setEnc(null);
+    if (v !== 'deepdive') setDeep(null);
   }
   const NAV = [['home', 'Home'], ['journal', 'Journal'], ['map', 'Map'], ['profile', 'Profile'], ['settings', 'Settings']];
   return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
@@ -5857,13 +6178,19 @@ function App() {
     save: save,
     go: go,
     toast: toast,
-    startEncounter: startEncounter
+    startEncounter: startEncounter,
+    startDeepDive: startDeepDive
   }) : /*#__PURE__*/React.createElement(PlanSetup, {
     db: db,
     save: save,
     go: go,
     toast: toast
-  })), view === 'encounter' && enc && /*#__PURE__*/React.createElement(Encounter, {
+  })), view === 'deepdive' && deep && /*#__PURE__*/React.createElement(DiveDeeper, {
+    key: deep.key,
+    db: db,
+    go: go,
+    arg: deep
+  }), view === 'encounter' && enc && /*#__PURE__*/React.createElement(Encounter, {
     key: enc.key,
     mode: enc.mode,
     arg: enc.arg,
