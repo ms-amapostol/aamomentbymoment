@@ -1152,6 +1152,7 @@ function blank() {
     recent: [],
     pausedPlans: [],
     draft: null,
+    studies: [],
     settings: {
       translation: DEFAULT_TRANSLATION,
       bibleKey: DEFAULT_BIBLE_KEY,
@@ -1216,6 +1217,7 @@ function mergeData(cur, inc) {
     entries: byId(c.entries, i.entries),
     verses: byId(c.verses, i.verses),
     prayers: byId(c.prayers, i.prayers),
+    studies: byId(c.studies, i.studies),
     seen: mergeSeen(c.seen, i.seen),
     friends: mergeFriends(c.friends, i.friends),
     customFriends,
@@ -1696,6 +1698,21 @@ Rules: 3 or 4 scenes per person, in the order they happened. Every ref must be a
     }))
   })).filter(f => f.name && f.scenes.length >= 2).slice(0, 2);
 }
+// Convert spoken punctuation words (said aloud during dictation) into real marks.
+function applyPunctuation(t) {
+  let s = ' ' + t + ' ';
+  const map = [[/\s+new paragraph\s+/gi, '\n\n'], [/\s+(new line|newline)\s+/gi, '\n'], [/\s+question mark\b/gi, '?'], [/\s+exclamation (mark|point)\b/gi, '!'], [/\s+(full stop|period)\b/gi, '.'], [/\s+comma\b/gi, ','], [/\s+semicolon\b/gi, ';'], [/\s+colon\b/gi, ':'], [/\s+(open paren|open parenthesis)\s+/gi, ' ('], [/\s+(close paren|close parenthesis)\b/gi, ')'], [/\s+(dash|hyphen)\s+/gi, ' \u2014 '], [/\s+ellipsis\b/gi, '\u2026']];
+  map.forEach(([re, rep]) => {
+    s = s.replace(re, rep);
+  });
+  s = s.replace(/\s+([,.;:?!])/g, '$1'); // no space before punctuation
+  s = s.replace(/([,.;:?!])([A-Za-z])/g, '$1 $2'); // a space after it
+  s = s.replace(/ *\n */g, '\n'); // tidy around newlines
+  s = s.replace(/\s{2,}/g, ' ').trim();
+  s = s.replace(/\bi\b/g, 'I'); // standalone i -> I
+  s = s.replace(/([.?!]\s+|\n)([a-z])/g, (m, p, c) => p + c.toUpperCase()); // capitalize after sentence breaks
+  return s;
+}
 function MicField({
   value,
   onValue,
@@ -1773,7 +1790,10 @@ function MicField({
         const seg = e.results[i][0].transcript;
         if (e.results[i].isFinal) finalAdd += seg;else interim += seg;
       }
-      onValue(baseRef.current + (finalAdd + interim).replace(/\s+/g, ' ').replace(/^\s+/, ''));
+      let dictated = applyPunctuation((finalAdd + interim).replace(/\s+/g, ' '));
+      const joiner = baseRef.current && !/[\s\n]$/.test(baseRef.current) ? ' ' : '';
+      if (!baseRef.current && dictated) dictated = dictated.charAt(0).toUpperCase() + dictated.slice(1);
+      onValue((baseRef.current + joiner + dictated).replace(/^\s+/, ''));
     };
     r.onstart = () => {
       clearStuckTimer();
@@ -1807,6 +1827,16 @@ function MicField({
     } catch (e) {}
     clearStuckTimer();
   }, []);
+  const taRef = useRef(null);
+  useEffect(() => {
+    // grow to fit content (up to a max), keeping the newest text in view
+    const ta = taRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    const max = 320;
+    ta.style.height = Math.min(ta.scrollHeight, max) + 'px';
+    if (ta.scrollHeight > max) ta.scrollTop = ta.scrollHeight;
+  }, [value]);
   const micActive = rec || starting;
   return /*#__PURE__*/React.createElement("div", {
     style: {
@@ -1814,6 +1844,7 @@ function MicField({
       ...(style || {})
     }
   }, /*#__PURE__*/React.createElement("textarea", {
+    ref: taRef,
     rows: rows,
     value: value,
     placeholder: placeholder,
@@ -1821,7 +1852,9 @@ function MicField({
     style: {
       width: '100%',
       boxSizing: 'border-box',
-      paddingRight: SR ? 40 : undefined
+      paddingRight: SR ? 40 : undefined,
+      overflowY: 'auto',
+      maxHeight: 320
     }
   }), SR && /*#__PURE__*/React.createElement("button", {
     type: "button",
@@ -1923,7 +1956,14 @@ function MicField({
       lineHeight: 1.5,
       margin: '6px 0 0'
     }
-  }, "Tap the mic and talk — your words become text as you go. The very first time on this device, after allowing microphone access, the mic may not start. If that happens, fully close this app (swipe it away, don't just switch tabs) and reopen it — it'll work normally every time after that."), /*#__PURE__*/React.createElement("div", {
+  }, "Tap the mic and talk — your words become text as you go. The very first time on this device, after allowing microphone access, the mic may not start. If that happens, fully close this app (swipe it away, don't just switch tabs) and reopen it — it'll work normally every time after that."), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12.8,
+      lineHeight: 1.5,
+      margin: '8px 0 0',
+      color: 'var(--gilt-glow)'
+    }
+  }, "Tip: say “comma,” “question mark,” or “new line” and they'll become punctuation."), /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 10,
       textAlign: 'right'
@@ -3202,7 +3242,9 @@ function PlanSetup({
 function DiveDeeper({
   db,
   go,
-  arg
+  arg,
+  save,
+  toast
 }) {
   const [passage, setPassage] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -3210,6 +3252,7 @@ function DiveDeeper({
   const [convo, setConvo] = useState([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  const [savedId, setSavedId] = useState(null);
   const scroller = useRef(null);
   const hasAI = !!db.settings.aiKey;
   useEffect(() => {
@@ -3242,7 +3285,11 @@ function DiveDeeper({
   function ctxMsg(d) {
     return `Topic being explored: ${arg.topic || 'the meaning of this passage'}.\nToday's reading: ${d.reference}\nText: "${passText(d)}"\n${arg.label ? 'This reading is about: ' + arg.label + '. ' : ''}${arg.note || ''}`;
   }
-  const topicSys = () => guardSystem(db.profile) + `\n\nRIGHT NOW you are helping her UNDERSTAND A TOPIC through Scripture: "${arg.topic || 'the meaning of this passage'}". Keep the focus on the topic and on what the passage actually means — its context, what is happening, the history and theology, how it illuminates the topic. This is NOT about her personal life or application unless she explicitly asks; do not steer toward "how does this apply to you." Teach clearly, faithfully, and humbly. Convey God's words only by quoting Scripture with references; never speak in God's voice or invent what He might say.`;
+  const topicSys = () => guardSystem(db.profile) + `\n\nRIGHT NOW you are her companion in a Bible study, helping her UNDERSTAND A TOPIC through Scripture: "${arg.topic || 'the meaning of this passage'}". Keep the focus on the topic and on what the passage actually means — its context, what is happening, the history and theology, how it illuminates the topic. This is not about her personal life or application unless she explicitly asks.
+
+VOICE — this matters: Be a warm, wise, encouraging friend who happens to know Scripture deeply — the kind of beloved pastor-teacher who sits beside someone, not across a desk from them. Speak with heart and warmth, never clinical detachment. When something is genuinely uncertain, or faithful believers read it differently, DO NOT distance yourself with lines like "I can't answer that" or "I'm not the authority here." Instead, stay in it WITH her: name gently that this is one of the deep places of Scripture, share what the text does say and how thoughtful, faithful Christians across the church have understood it — offering that range as a gift and a comfort, not a disclaimer — and invite her to keep wondering alongside you. Be humble the way a trusted friend is humble: present, warm, and companioning, never removed or evasive. You can hold mystery tenderly and still be a steady, supportive, hope-giving presence.
+
+Still hold the boundary: convey God's own words only by quoting actual Scripture with its reference; never speak in God's voice or invent what He might say; point to Scripture and the wisdom of the church rather than to yourself as the final word — but always warmly, as one walking beside her.`;
   async function openDive(d) {
     setBusy(true);
     try {
@@ -3292,6 +3339,40 @@ function DiveDeeper({
     }
     setBusy(false);
   }
+  function saveStudy() {
+    const clean = convo.filter(m => !(m.role === 'ai' && m.text.startsWith('__ERR__')));
+    if (!clean.length) return;
+    const ref = passage && passage.reference || arg.refs && arg.refs[0] || '';
+    if (savedId) {
+      save({
+        ...db,
+        studies: db.studies.map(s => s.id === savedId ? {
+          ...s,
+          convo: clean,
+          date: new Date().toISOString()
+        } : s)
+      });
+      toast('Study updated');
+    } else {
+      const id = 'st_' + Date.now();
+      const study = {
+        id,
+        date: new Date().toISOString(),
+        topic: arg.topic || 'Bible study',
+        reference: ref,
+        refs: arg.refs || [],
+        label: arg.label || '',
+        convo: clean
+      };
+      save({
+        ...db,
+        studies: [study, ...(db.studies || [])]
+      });
+      setSavedId(id);
+      toast('Saved to Bible Studies');
+    }
+  }
+  const hasConvo = convo.some(m => m.role === 'me') || convo.some(m => m.role === 'ai' && !m.text.startsWith('__ERR__'));
   return /*#__PURE__*/React.createElement("div", {
     className: "wrap settle"
   }, /*#__PURE__*/React.createElement("button", {
@@ -3394,7 +3475,16 @@ function DiveDeeper({
     style: {
       flexShrink: 0
     }
-  }, "Ask")));
+  }, "Ask")), hasAI && hasConvo && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 14,
+      display: 'flex',
+      justifyContent: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost sm",
+    onClick: saveStudy
+  }, savedId ? '\u2713 Saved — update study' : '\u2606 Save to Bible Studies')));
 }
 function PlanView({
   db,
@@ -5137,6 +5227,16 @@ function Journal({
       toast('Prayer removed');
     }
   }
+  function delStudy(id) {
+    if (window.confirm('Delete this Bible study?')) {
+      save({
+        ...db,
+        studies: (db.studies || []).filter(s => s.id !== id)
+      });
+      if (openId === id) setOpenId(null);
+      toast('Study removed');
+    }
+  }
   async function reflectJourney() {
     if (!db.settings.aiKey) {
       setJourneyOut('__KEY__');
@@ -5182,6 +5282,9 @@ function Journal({
     className: tab === 'verses' ? 'on' : '',
     onClick: () => setTab('verses')
   }, "Verses"), /*#__PURE__*/React.createElement("button", {
+    className: tab === 'studies' ? 'on' : '',
+    onClick: () => setTab('studies')
+  }, "Studies"), /*#__PURE__*/React.createElement("button", {
     className: tab === 'prayers' ? 'on' : '',
     onClick: () => setTab('prayers')
   }, "Prayers"), /*#__PURE__*/React.createElement("button", {
@@ -5250,7 +5353,63 @@ function Journal({
       fontSize: 17,
       color: 'var(--ink)'
     }
-  }, "“", v.text, "”")))))), tab === 'prayers' && /*#__PURE__*/React.createElement("div", {
+  }, "“", v.text, "”")))))), tab === 'studies' && ((db.studies || []).length === 0 ? /*#__PURE__*/React.createElement(Empty, {
+    text: "Bible studies you save from 'Dive deeper' will gather here — the conversations where you unpacked a topic together."
+  }) : /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 6
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "muted",
+    style: {
+      fontSize: 12.5,
+      margin: '0 0 8px 2px'
+    }
+  }, "Topics you've explored · tap to reopen the conversation · swipe to delete"), db.studies.map(s => {
+    const isOpen = openId === s.id;
+    return /*#__PURE__*/React.createElement(SwipeCard, {
+      key: s.id,
+      onDelete: () => delStudy(s.id)
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "leaf",
+      onClick: () => setOpenId(isOpen ? null : s.id)
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "ld"
+    }, fmt(s.date), s.reference ? ' \u00b7 ' + s.reference : ''), /*#__PURE__*/React.createElement("p", {
+      className: "lr"
+    }, s.topic), !isOpen && /*#__PURE__*/React.createElement("div", {
+      className: "lmore"
+    }, "Reopen this study →"), isOpen && /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginTop: 10
+      }
+    }, s.convo.map((m, i) => /*#__PURE__*/React.createElement("div", {
+      key: i,
+      style: {
+        margin: '0 0 10px',
+        display: 'flex',
+        justifyContent: m.role === 'me' ? 'flex-end' : 'flex-start'
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: m.role === 'me' ? '' : 'serif',
+      style: {
+        maxWidth: '90%',
+        padding: '10px 13px',
+        borderRadius: m.role === 'me' ? '13px 13px 4px 13px' : '13px 13px 13px 4px',
+        background: m.role === 'me' ? 'var(--vespers)' : 'var(--parchment-2)',
+        color: m.role === 'me' ? '#f4efff' : 'var(--ink)',
+        fontSize: m.role === 'me' ? 14 : 15,
+        lineHeight: 1.55,
+        whiteSpace: 'pre-wrap'
+      }
+    }, m.text))), /*#__PURE__*/React.createElement("button", {
+      className: "ldel",
+      onClick: ev => {
+        ev.stopPropagation();
+        delStudy(s.id);
+      }
+    }, "Delete this study"))));
+  }))), tab === 'prayers' && /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 6
     }
@@ -6218,7 +6377,9 @@ function App() {
     key: deep.key,
     db: db,
     go: go,
-    arg: deep
+    arg: deep,
+    save: save,
+    toast: toast
   }), view === 'encounter' && enc && /*#__PURE__*/React.createElement(Encounter, {
     key: enc.key,
     mode: enc.mode,
