@@ -1422,7 +1422,8 @@ SACRED BOUNDARY — never cross this: You must NEVER speak in the voice of God, 
 You help her have a real, unhurried conversation with the Word: ask ONE question at a time, respond to what she actually writes, follow her thread, and help her go deeper into what the passage reveals and what it means for her walk. Draw on the passage and, where it truly helps, its context. Never rush her toward a tidy takeaway.
 Reader context — meet her where she is: ${stages.join(', ') || 'unspecified life stage'}${parent ? ' (a parent)' : ''}${age}. Spiritual temperament (Sacred Pathways): ${path || 'unknown'}. Spiritual gifts: ${gifts || 'unknown'}. Shape reflection toward how she connects with God, but don't name the framework unless asked.
 How she processes: ${pers || 'unspecified'}. Let this steer your TONE and PACING (not the content): with someone reflective or deeply feeling, move slowly and tenderly and leave silence to sit in; with someone structured, offer a little more shape and clarity; with someone open, feel free to wonder aloud together; with someone steady, be grounded and unhurried. Adapt naturally — and never name these traits.
-POSTURE (hold these as your sensibility, never as quotations, never naming any author or book): (1) Grace comes first and runs ahead — like the father who runs to the returning child before a word of repentance. Never shame someone back toward God; welcome them. Assume the person longing to draw near is already being drawn. (2) There are two ways to be far from God: open rebellion AND quiet self-righteousness — the dutiful, resentful, "I've earned this" heart is as much in need of grace as the reckless one. Gently notice elder-brother tones (earning, comparing, bitterness at others' grace, joyless duty) and turn them toward mercy, tenderly, never with a scolding. (3) Life is bigger than personal fulfillment: we're made for God's pleasure (worship), for each other (fellowship), to become like Christ (discipleship), to serve (ministry), and to carry His love outward (mission). Where it fits naturally, help her see her moment inside that larger purpose — that it is not, finally, about her alone. Hold all of this lightly and warmly; it is the water you swim in, not a lesson to deliver.`;
+POSTURE (hold these as your sensibility, never as quotations, never naming any author or book): (1) Grace comes first and runs ahead — like the father who runs to the returning child before a word of repentance. Never shame someone back toward God; welcome them. Assume the person longing to draw near is already being drawn. (2) There are two ways to be far from God: open rebellion AND quiet self-righteousness — the dutiful, resentful, "I've earned this" heart is as much in need of grace as the reckless one. Gently notice elder-brother tones (earning, comparing, bitterness at others' grace, joyless duty) and turn them toward mercy, tenderly, never with a scolding. (3) Life is bigger than personal fulfillment: we're made for God's pleasure (worship), for each other (fellowship), to become like Christ (discipleship), to serve (ministry), and to carry His love outward (mission). Where it fits naturally, help her see her moment inside that larger purpose — that it is not, finally, about her alone. Hold all of this lightly and warmly; it is the water you swim in, not a lesson to deliver.
+DEVOTIONAL SOURCES she treasures — draw on these when they genuinely illuminate a topic (especially in deeper topical study), and you may name and cite them: three public-domain classics by Ellen G. White that shape the understanding here. "The Desire of Ages" (1898) — the life of Christ; draw on it for Jesus, His ministry, teaching, death, and resurrection. "The Great Controversy" (1911) — the conflict between Christ and Satan across history to the end of time; draw on it for the last days, prophecy, the church through the ages, and the second coming. "Patriarchs and Prophets" (1890) — the Old Testament story from creation through the kings; draw on it for OT figures and narratives. When one of these illuminates the topic, weave in its perspective naturally and reference it by title (and chapter when you are confident), e.g. "Ellen White, in The Desire of Ages, reflects that…". CRUCIAL GUARDRAILS: paraphrase their ideas faithfully in your OWN words; do NOT fabricate verbatim quotations, page numbers, or chapter titles — if you are not certain of exact wording, convey the sense rather than inventing a quote. Only offer a direct quotation when you are confident it is accurate. And always frame these as trusted devotional commentary that points to Scripture and helps us understand it — never as equal to the Bible itself. Let Scripture remain the final word; these voices simply walk alongside it.`;
 }
 
 /* map free-typed words to the best-fitting anchor story */
@@ -1900,7 +1901,14 @@ function MicField({
       fontWeight: 600,
       pointerEvents: 'none'
     }
-  }, rec ? 'listening…' : 'starting…'), stuck && /*#__PURE__*/React.createElement("div", {
+  }, rec ? 'listening…' : 'starting…'), rec && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11.5,
+      color: 'var(--rose)',
+      marginTop: 5,
+      fontWeight: 500
+    }
+  }, "Mic is on — tap it to stop before you send, so all your words are captured."), stuck && /*#__PURE__*/React.createElement("div", {
     style: {
       position: 'absolute',
       right: 0,
@@ -3246,15 +3254,17 @@ function DiveDeeper({
   save,
   toast
 }) {
+  const resume = arg.resumeStudy || null;
   const [passage, setPassage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
-  const [convo, setConvo] = useState([]);
+  const [convo, setConvo] = useState(resume && resume.convo ? resume.convo : []);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
-  const [savedId, setSavedId] = useState(null);
+  const [savedId, setSavedId] = useState(resume ? resume.id : null);
   const scroller = useRef(null);
   const hasAI = !!db.settings.aiKey;
+  const backTo = arg.from || 'plan';
   useEffect(() => {
     let live = true;
     (async () => {
@@ -3263,7 +3273,7 @@ function DiveDeeper({
         if (live) {
           setPassage(d);
           setLoading(false);
-          if (hasAI) openDive(d);
+          if (hasAI && !resume) openDive(d);
         }
       } catch (e) {
         if (live) {
@@ -3377,11 +3387,11 @@ Still hold the boundary: convey God's own words only by quoting actual Scripture
     className: "wrap settle"
   }, /*#__PURE__*/React.createElement("button", {
     className: "btn ghost sm",
-    onClick: () => go('plan'),
+    onClick: () => go(backTo),
     style: {
       marginBottom: 14
     }
-  }, "← Back to my plan"), /*#__PURE__*/React.createElement("div", {
+  }, "← ", backTo === 'journal' ? 'Back to my journal' : 'Back to my plan'), /*#__PURE__*/React.createElement("div", {
     className: "eyebrow",
     style: {
       color: 'var(--gilt)'
@@ -3393,7 +3403,14 @@ Still hold the boundary: convey God's own words only by quoting actual Scripture
       fontWeight: 600,
       margin: '6px 0 4px'
     }
-  }, loading ? 'Opening the passage…' : passage ? passage.reference : ''), /*#__PURE__*/React.createElement("p", {
+  }, loading ? 'Opening the passage…' : passage ? passage.reference : ''), resume ? /*#__PURE__*/React.createElement("p", {
+    className: "serif muted",
+    style: {
+      fontSize: 14.5,
+      lineHeight: 1.5,
+      marginTop: 2
+    }
+  }, "Picking your study back up where you left off. Read back through, then continue whenever you're ready.") : /*#__PURE__*/React.createElement("p", {
     className: "serif muted",
     style: {
       fontSize: 14.5,
@@ -5178,7 +5195,8 @@ function SwipeCard({
 function Journal({
   db,
   save,
-  toast
+  toast,
+  startDeepDive
 }) {
   const [tab, setTab] = useState('entries');
   const [openId, setOpenId] = useState(null);
@@ -5402,13 +5420,33 @@ function Journal({
         lineHeight: 1.55,
         whiteSpace: 'pre-wrap'
       }
-    }, m.text))), /*#__PURE__*/React.createElement("button", {
+    }, m.text))), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        gap: 10,
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        marginTop: 6
+      }
+    }, db.settings.aiKey && s.refs && s.refs.length > 0 && /*#__PURE__*/React.createElement("button", {
+      className: "btn gilt sm",
+      onClick: ev => {
+        ev.stopPropagation();
+        startDeepDive({
+          refs: s.refs,
+          topic: s.topic,
+          label: s.label,
+          from: 'journal',
+          resumeStudy: s
+        });
+      }
+    }, "✨ Continue this study →"), /*#__PURE__*/React.createElement("button", {
       className: "ldel",
       onClick: ev => {
         ev.stopPropagation();
         delStudy(s.id);
       }
-    }, "Delete this study"))));
+    }, "Delete this study")))));
   }))), tab === 'prayers' && /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 6
@@ -6393,7 +6431,8 @@ function App() {
   }), view === 'journal' && /*#__PURE__*/React.createElement(Journal, {
     db: db,
     save: save,
-    toast: toast
+    toast: toast,
+    startDeepDive: startDeepDive
   }), view === 'map' && /*#__PURE__*/React.createElement(MapView, {
     db: db
   }), view === 'profile' && /*#__PURE__*/React.createElement(Profile, {
