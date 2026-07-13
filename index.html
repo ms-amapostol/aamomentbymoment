@@ -51,26 +51,29 @@
   /* ---- shell ---- */
   .topbar{
     position:sticky;top:0;z-index:20;
-    background:var(--vespers);color:#efeaf7;
-    display:flex;align-items:center;justify-content:space-between;
-    padding:14px 22px;
-    border-bottom:1px solid rgba(199,163,92,.18);
+    background:linear-gradient(180deg,#12325a,var(--vespers) 88%);color:#eaf1f8;
+    padding:14px 20px 10px;
+    border-bottom:1px solid rgba(102,202,191,.16);
   }
-  .brand{display:flex;align-items:center;gap:11px}
-  .brand .lamp{
-    width:26px;height:26px;border-radius:50%;
-    background:radial-gradient(circle at 50% 38%,var(--gilt-glow),var(--gilt) 62%,#6f5320 100%);
-    box-shadow:0 0 16px rgba(231,201,135,.55);flex:none;
-  }
-  .brand h1{font-family:'Fraunces',serif;font-weight:600;font-size:19px;margin:0;letter-spacing:.3px}
-  .brand small{display:block;font-family:'Inter';font-weight:400;font-size:10.5px;letter-spacing:2.4px;text-transform:uppercase;color:var(--vespers-soft)}
-  .nav{display:flex;gap:2px}
+  .topbar .toprow{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px}
+  .topbar .tb-right{justify-self:end}
+  .brand{justify-self:center;text-align:center;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:1px}
+  .brand img.brandmark{width:30px;height:30px;border-radius:50%;display:block;margin-bottom:4px;flex:none}
+  .brand h1{font-family:'Fraunces',serif;font-weight:600;font-size:23px;margin:0;letter-spacing:-.008em;color:#fff;line-height:1.1}
+  .brand small{display:block;font-family:'Spectral',Georgia,serif;font-style:italic;font-weight:400;font-size:12px;letter-spacing:0;text-transform:none;color:#a9c0da;margin-top:2px}
+  .navrow{margin-top:10px;padding-top:9px;border-top:1px solid rgba(255,255,255,.09)}
+  .nav{display:flex;gap:22px;justify-content:center;flex-wrap:wrap}
   .nav button{
-    background:none;border:none;color:#c9c2dd;
-    font-size:13px;padding:8px 12px;border-radius:9px;font-weight:500;
+    background:none;border:none;color:rgba(233,241,248,.66);
+    font-family:'Inter',sans-serif;font-size:13.5px;padding:4px 1px 6px;font-weight:500;
+    border-bottom:2px solid transparent;transition:color .15s;cursor:pointer;white-space:nowrap;
   }
-  .nav button.active{background:rgba(199,163,92,.18);color:var(--gilt-glow)}
+  .nav button.active{color:#fff;font-weight:600;border-bottom-color:var(--gilt-glow)}
   .nav button:hover{color:#fff}
+  .aipill{display:inline-flex;align-items:center;gap:6px;font-family:'Inter',sans-serif;font-size:11px;font-weight:600;letter-spacing:.3px;
+    padding:5px 11px;border-radius:20px;white-space:nowrap;cursor:pointer;
+    background:rgba(102,202,191,.12);color:var(--gilt-glow);border:1px solid rgba(102,202,191,.34)}
+  .aipill .aidot{width:7px;height:7px;border-radius:50%;background:var(--gilt-glow);box-shadow:0 0 7px var(--gilt-glow);flex:none}
   .wrap{max-width:720px;margin:0 auto;padding:40px 22px 120px}
 
   /* ---- generic ---- */
@@ -229,13 +232,16 @@
   .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:26px;background:var(--vespers);color:#f2eeff;padding:12px 20px;border-radius:30px;font-size:13.5px;box-shadow:0 10px 40px rgba(0,0,0,.3);z-index:60;border:1px solid rgba(199,163,92,.4)}
   .keyhint{font-size:12.5px;color:var(--ink-soft);background:var(--parchment-2);border:1px dashed var(--line);border-radius:10px;padding:11px 13px;margin-top:10px}
   @media(max-width:560px){
-    .topbar{flex-direction:column;align-items:stretch;gap:9px;padding:10px 14px}
-    .topbar>div:last-child{justify-content:space-between;width:100%}
-    .brand h1{font-size:17px;white-space:nowrap}
-    .brand small{display:none}
-    .nav{flex:1;display:flex;justify-content:space-between;gap:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+    .topbar{padding:13px 14px 9px}
+    .topbar .toprow{grid-template-columns:1fr;justify-items:center;gap:9px}
+    .topbar .tb-left{display:none}
+    .topbar .tb-right{justify-self:center}
+    .brand h1{font-size:21px;white-space:nowrap}
+    .brand small{font-size:11.5px}
+    .navrow{margin-top:9px;padding-top:9px}
+    .nav{gap:16px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;max-width:100%}
     .nav::-webkit-scrollbar{display:none}
-    .nav button{padding:7px 6px;font-size:12.5px;flex:none;white-space:nowrap}
+    .nav button{padding:4px 1px 6px;font-size:13px;flex:none;white-space:nowrap}
     .wrap{padding:20px 15px 96px}
     .door{padding:17px 16px}
     .door h3{font-size:17px}
@@ -6319,55 +6325,27 @@ function App() {
   return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "topbar"
   }, /*#__PURE__*/React.createElement("div", {
+    className: "toprow"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "tb-left"
+  }), /*#__PURE__*/React.createElement("div", {
     className: "brand",
-    onClick: () => go('home'),
-    style: {
-      cursor: 'pointer'
-    }
+    onClick: () => go('home')
   }, /*#__PURE__*/React.createElement("img", {
+    className: "brandmark",
     src: LOGO,
-    alt: "",
-    style: {
-      width: 30,
-      height: 30,
-      borderRadius: '50%',
-      flex: 'none',
-      display: 'block'
-    }
-  }), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h1", null, "Moment by Moment"), /*#__PURE__*/React.createElement("small", null, "drawing closer to God, one moment at a time"))), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: 10
-    }
+    alt: ""
+  }), /*#__PURE__*/React.createElement("h1", null, "Moment by Moment"), /*#__PURE__*/React.createElement("small", null, "Drawing closer to God, one moment at a time")), /*#__PURE__*/React.createElement("div", {
+    className: "tb-right"
   }, db.settings.aiKey && /*#__PURE__*/React.createElement("button", {
+    className: "aipill",
     onClick: () => go('settings'),
-    title: "Personalized AI reflections are on",
-    style: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: 6,
-      background: 'rgba(102,202,191,.16)',
-      border: '1px solid rgba(102,202,191,.4)',
-      color: 'var(--gilt-glow)',
-      borderRadius: 20,
-      padding: '5px 11px',
-      fontSize: 11.5,
-      fontWeight: 600,
-      cursor: 'pointer',
-      flex: 'none',
-      fontFamily: "'Inter',sans-serif"
-    }
+    title: "Personalized AI reflections are on"
   }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      width: 7,
-      height: 7,
-      borderRadius: '50%',
-      background: 'var(--gilt-glow)',
-      boxShadow: '0 0 7px var(--gilt-glow)',
-      flex: 'none'
-    }
-  }), "AI\xA0on"), /*#__PURE__*/React.createElement("div", {
+    className: "aidot"
+  }), "AI\xA0on"))), /*#__PURE__*/React.createElement("div", {
+    className: "navrow"
+  }, /*#__PURE__*/React.createElement("div", {
     className: "nav"
   }, NAV.map(([k, l]) => /*#__PURE__*/React.createElement("button", {
     key: k,
