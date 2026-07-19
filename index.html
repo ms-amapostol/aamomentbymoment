@@ -4474,7 +4474,10 @@ In 2-4 warm sentences, as her companion closing this time together: FIRST gently
   }, /*#__PURE__*/React.createElement("button", {
     className: "btn ghost sm",
     onClick: leave
-  }, "← Leave"), hasWork && /*#__PURE__*/React.createElement("button", {
+  }, "← Leave"), stage > 2 && /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost sm",
+    onClick: () => setStage(Math.max(2, stage - 1))
+  }, "← Back a step"), hasWork && /*#__PURE__*/React.createElement("button", {
     className: "btn ghost sm",
     onClick: discard,
     style: {
@@ -6433,6 +6436,18 @@ function App() {
     });
   }
   function startEncounter(mode, arg) {
+    const dr = db.draft;
+    const same = dr && dr.mode === mode && (mode === 'ref' ? (((dr.arg && dr.arg.refs) || []).length > 0 && ((dr.arg && dr.arg.refs) || []).join('|') === ((arg && arg.refs) || []).join('|')) || !!(dr.arg && dr.arg.ref && dr.arg.ref === (arg && arg.ref)) : mode === 'story' ? !!(dr.arg && arg && dr.arg.storyId === arg.storyId) : mode === 'friend' ? !!(dr.arg && arg && dr.arg.friendId === arg.friendId && dr.arg.sceneIndex === arg.sceneIndex) : false);
+    if (same) {
+      setEnc({
+        mode: dr.mode,
+        arg: dr.arg,
+        key: Date.now(),
+        resume: true
+      });
+      setView('encounter');
+      return;
+    }
     if (db.draft) save({
       ...db,
       draft: null
