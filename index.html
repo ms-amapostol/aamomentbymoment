@@ -1128,9 +1128,34 @@ function load() {
     if (d && d.settings && !d.settings.bibleKey) {
       d.settings.bibleKey = DEFAULT_BIBLE_KEY;
     }
+    if (d) {
+      // migrate: single `plan` -> `plans` array (+ focused planId)
+      if (!Array.isArray(d.plans)) {
+        d.plans = d.plan ? [withPlanId(d.plan)] : [];
+      } else {
+        d.plans = d.plans.map(withPlanId);
+      }
+      if (!d.planId) d.planId = d.plans[0] ? d.plans[0].id : null;
+      delete d.plan;
+    }
     return d;
   } catch (e) {}
   return null;
+}
+function withPlanId(p) {
+  if (!p) return p;
+  return p.id ? p : {
+    ...p,
+    id: 'plan_' + (p.started || Date.now()) + '_' + Math.random().toString(36).slice(2, 6)
+  };
+}
+function activePlans(db) {
+  if (db && Array.isArray(db.plans)) return db.plans;
+  return db && db.plan ? [withPlanId(db.plan)] : [];
+}
+function focusedPlan(db) {
+  const ps = activePlans(db);
+  return ps.find(p => p.id === db.planId) || ps[0] || null;
 }
 const DEFAULT_BIBLE_KEY = 'MM1KhTbr_s-qd0YnBNMqn';
 const DEFAULT_BIBLES = [{
@@ -1160,7 +1185,8 @@ function blank() {
     verses: [],
     prayers: [],
     welcomed: false,
-    plan: null,
+    plans: [],
+    planId: null,
     seen: {},
     friends: {},
     customFriends: [],
@@ -1218,14 +1244,18 @@ function mergeData(cur, inc) {
     });
     return [...m.values()];
   })();
-  // plan: keep whichever is further along (higher index)
-  const planPick = (() => {
-    const cp = c.plan,
-      ip = i.plan;
-    if (!cp) return ip || null;
-    if (!ip) return cp;
-    return (ip.index || 0) > (cp.index || 0) ? ip : cp;
+  // plans: union all active plans by id, keeping whichever copy is further along
+  const plansPick = (() => {
+    const m = new Map();
+    [...activePlans(c), ...activePlans(i)].forEach(p => {
+      if (!p) return;
+      const key = p.id || (p.title || '') + '|' + (p.type || 'bible') + '|' + (p.started || '');
+      const pr = m.get(key);
+      if (!pr || (p.index || 0) > (pr.index || 0)) m.set(key, p);
+    });
+    return [...m.values()];
   })();
+  const planIdPick = c.planId || i.planId || (plansPick[0] ? plansPick[0].id : null);
   return {
     ...c,
     profile: i.profile && i.profile.onboarded && !c.profile.onboarded ? i.profile : c.profile,
@@ -1237,7 +1267,8 @@ function mergeData(cur, inc) {
     friends: mergeFriends(c.friends, i.friends),
     customFriends,
     recent: [...new Set([...(c.recent || []), ...(i.recent || [])])].slice(0, 12),
-    plan: planPick,
+    plans: plansPick,
+    planId: planIdPick,
     pausedPlans: (() => {
       const m = new Map();
       [...(c.pausedPlans || []), ...(i.pausedPlans || [])].forEach(p => {
@@ -2728,6 +2759,8 @@ function Profile({
 function Home({
   db,
   go,
+  save,
+  openPlan,
   startEncounter,
   resumeEncounter,
   dismissDraft,
@@ -2833,7 +2866,7 @@ function Home({
     alt: ""
   }), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("h3", null, "Meet me here"), /*#__PURE__*/React.createElement("p", null, "Tell me what you're carrying, and I'll bring you a passage that speaks to it."))), /*#__PURE__*/React.createElement("button", {
     className: "door settle",
-    onClick: () => startEncounter('surprise', {})
+    onClick: () => startEncounter('surprise')
   }, /*#__PURE__*/React.createElement("img", {
     className: "dimg",
     src: IMG.door_surprise,
@@ -2852,20 +2885,17 @@ function Home({
     className: "dimg",
     src: IMG.door_friends,
     alt: ""
-  }), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("h3", null, "Walk with a Bible friend"), /*#__PURE__*/React.createElement("p", null, "Follow a life scene by scene — or tell me what you're carrying, and I'll find who walked it before you.")))), db.plan ? /*#__PURE__*/React.createElement(PlanCard, {
+  }), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("h3", null, "Walk with a Bible friend"), /*#__PURE__*/React.createElement("p", null, "Follow a life scene by scene — or tell me what you're carrying, and I'll find who walked it before you.")))), db.plan ? /*#__PURE__*/React.createElement(ReadingPaths, {
     db: db,
-    go: go
-  }) : /*#__PURE__*/React.createElement("button", {
-    className: "door settle",
-    style: {
-      marginTop: 14
-    },
-    onClick: () => go('planSetup')
-  }, /*#__PURE__*/React.createElement("img", {
-    className: "dimg",
-    src: IMG.door_plan,
-    alt: ""
-  }), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("h3", null, "Follow a reading plan"), /*#__PURE__*/React.createElement("p", null, "A guided journey, a question you want to explore, or the whole Bible — at your own pace."))), /*#__PURE__*/React.createElement("div", {
+    go: go,
+    save: save,
+    openPlan: openPlan
+  }) : /*#__PURE__*/React.createElement(ReadingPaths, {
+    db: db,
+    go: go,
+    save: save,
+    openPlan: openPlan
+  }), /*#__PURE__*/React.createElement("div", {
     className: "stat-strip"
   }, /*#__PURE__*/React.createElement("div", {
     className: "stat"
@@ -2915,20 +2945,23 @@ function Home({
 /* ============ Reading plan ============ */
 function PlanCard({
   db,
-  go
+  go,
+  plan,
+  onOpen
 }) {
-  const sch = planSchedule(db.plan);
-  const done = db.plan.index >= sch.length;
-  const idx = Math.min(db.plan.index, Math.max(sch.length - 1, 0));
-  const pct = sch.length ? Math.round(db.plan.index / sch.length * 100) : 0;
-  const kind = planType(db.plan) === 'bible' ? 'Reading plan' : planType(db.plan) === 'ai' ? 'Your reading path' : 'Journey';
+  const p = plan || db.plan;
+  const sch = planSchedule(p);
+  const done = p.index >= sch.length;
+  const idx = Math.min(p.index, Math.max(sch.length - 1, 0));
+  const pct = sch.length ? Math.round(p.index / sch.length * 100) : 0;
+  const kind = planType(p) === 'bible' ? 'Reading plan' : planType(p) === 'ai' ? 'Your reading path' : 'Journey';
   return /*#__PURE__*/React.createElement("button", {
     className: "door settle",
     style: {
       marginTop: 14,
       display: 'block'
     },
-    onClick: () => go('plan')
+    onClick: onOpen || (() => go('plan'))
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
@@ -2940,12 +2973,12 @@ function PlanCard({
     style: {
       color: 'var(--gilt)'
     }
-  }, kind, " · ", planTitle(db.plan)), /*#__PURE__*/React.createElement("span", {
+  }, kind, " · ", planTitle(p)), /*#__PURE__*/React.createElement("span", {
     className: "muted",
     style: {
       fontSize: 12
     }
-  }, done ? 'Complete' : 'Day ' + (db.plan.index + 1) + ' of ' + sch.length)), /*#__PURE__*/React.createElement("h3", {
+  }, done ? 'Complete' : 'Day ' + (p.index + 1) + ' of ' + sch.length)), /*#__PURE__*/React.createElement("h3", {
     style: {
       margin: '6px 0 9px',
       fontSize: 18
@@ -2957,6 +2990,105 @@ function PlanCard({
       width: pct + '%'
     }
   })));
+}
+function ReadingPaths({
+  db,
+  go,
+  save,
+  openPlan
+}) {
+  const aps = activePlans(db);
+  const paused = db.pausedPlans || [];
+  if (aps.length === 0 && paused.length === 0) {
+    return /*#__PURE__*/React.createElement("button", {
+      className: "door settle",
+      style: {
+        marginTop: 14
+      },
+      onClick: () => go('planSetup')
+    }, /*#__PURE__*/React.createElement("img", {
+      className: "dimg",
+      src: IMG.door_plan,
+      alt: ""
+    }), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("h3", null, "Follow a reading plan"), /*#__PURE__*/React.createElement("p", null, "A guided journey, a question you want to explore, or the whole Bible — at your own pace.")));
+  }
+  function resume(idx) {
+    const p = paused[idx];
+    if (!p) return;
+    const np = withPlanId(p);
+    save({
+      ...db,
+      plans: [...aps, np],
+      pausedPlans: paused.filter((_, j) => j !== idx),
+      planId: np.id
+    });
+    go('plan');
+  }
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 18
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'baseline',
+      justifyContent: 'space-between',
+      margin: '0 2px 4px'
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "eyebrow",
+    style: {
+      color: 'var(--gilt)'
+    }
+  }, aps.length > 1 ? "Your reading paths" : "Your reading path"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => go('planSetup'),
+    style: {
+      background: 'none',
+      border: 'none',
+      color: 'var(--gilt-2)',
+      fontWeight: 600,
+      fontSize: 13,
+      cursor: 'pointer',
+      fontFamily: "'Inter',sans-serif"
+    }
+  }, "+ Add a path")), aps.map(p => /*#__PURE__*/React.createElement(PlanCard, {
+    key: p.id,
+    db: db,
+    go: go,
+    plan: p,
+    onOpen: () => openPlan(p.id)
+  })), paused.map((p, i) => /*#__PURE__*/React.createElement("button", {
+    key: 'pp' + i,
+    className: "door settle",
+    style: {
+      marginTop: 12,
+      opacity: .72,
+      display: 'block'
+    },
+    onClick: () => resume(i)
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'baseline'
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "eyebrow",
+    style: {
+      color: 'var(--ink-soft)'
+    }
+  }, "Set aside · ", planTitle(p)), /*#__PURE__*/React.createElement("span", {
+    className: "muted",
+    style: {
+      fontSize: 12
+    }
+  }, "tap to resume")), /*#__PURE__*/React.createElement("h3", {
+    style: {
+      margin: '6px 0 0',
+      fontSize: 15.5,
+      color: 'var(--ink-soft)'
+    }
+  }, "Paused at Day ", (p.index || 0) + 1))));
 }
 function planPace(dur) {
   const avg = Math.round(TOTAL_CH / +dur * 10) / 10;
@@ -2977,21 +3109,17 @@ function PlanSetup({
   const hasAI = !!db.settings.aiKey;
   const paused = db.pausedPlans || [];
   function startPlan(planObj) {
-    // preserve an in-progress current plan by pausing it (don't nuke)
-    const keep = db.plan && db.plan.index > 0 ? [{
-      ...db.plan,
-      pausedAt: new Date().toISOString()
-    }, ...paused] : paused;
+    const np = {
+      ...planObj,
+      index: 0,
+      started: new Date().toISOString(),
+      id: 'plan_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6)
+    };
     save({
       ...db,
-      plan: {
-        ...planObj,
-        index: 0,
-        started: new Date().toISOString()
-      },
-      pausedPlans: keep
+      plans: [...activePlans(db), np],
+      planId: np.id
     });
-    if (db.plan && db.plan.index > 0) toast('Your previous plan was set aside');
     go('plan');
   }
   function beginWhole() {
@@ -3031,16 +3159,12 @@ function PlanSetup({
     setBuilding(false);
   }
   function resumePaused(i) {
-    const p = paused[i];
-    const rest = paused.filter((_, j) => j !== i);
-    const keep = db.plan && db.plan.index > 0 ? [{
-      ...db.plan,
-      pausedAt: new Date().toISOString()
-    }, ...rest] : rest;
+    const p = withPlanId(paused[i]);
     save({
       ...db,
-      plan: p,
-      pausedPlans: keep
+      plans: [...activePlans(db), p],
+      pausedPlans: paused.filter((_, j) => j !== i),
+      planId: p.id
     });
     go('plan');
   }
@@ -4148,7 +4272,7 @@ function Encounter({
         } else {
           data = await fetchPassage(ref, db.settings);
         }
-        if (arg && arg.refs && arg.refs.length > 1) {
+        if (arg.refs && arg.refs.length > 1) {
           try {
             const _p = (await Promise.all(arg.refs.map(r => fetchPassage(r, db.settings).catch(() => null)))).filter(Boolean);
             if (_p.length > 1) {
@@ -5890,17 +6014,11 @@ function Settings({
         toast('That doesn\u2019t look like a backup');
         return;
       }
-      const inCount = (d.entries || []).length,
-        haveCount = (db.entries || []).length;
-      const doMerge = window.confirm(`Merge this backup into what\u2019s already here?\n\nThis device: ${haveCount} reflection${haveCount === 1 ? '' : 's'}.\nBackup file: ${inCount} reflection${inCount === 1 ? '' : 's'}.\n\nOK = merge them together (nothing is lost).\nCancel = replace everything on this device with the backup.`);
-      if (doMerge) {
-        const merged = mergeData(db, d);
-        save(merged);
-        toast(`Merged \u2014 ${merged.entries.length} reflections now`);
-      } else {
-        save(d);
-        toast('Replaced with backup');
-      }
+      const merged = mergeData(db, d);
+      save(merged);
+      const nP = (merged.plans || []).length;
+      const nR = (merged.entries || []).length;
+      toast(`Merged in \u2014 ${nR} reflection${nR === 1 ? '' : 's'}, ${nP} reading path${nP === 1 ? '' : 's'}`);
     };
     rd.readAsText(f);
     e.target.value = '';
@@ -6178,7 +6296,7 @@ function Settings({
       fontSize: 14,
       margin: '6px 0 10px'
     }
-  }, typeof HAS_GAS !== 'undefined' && HAS_GAS ? 'Your journal syncs to a private file in your Google Drive, so it follows you across every device you\u2019re signed into. It also keeps a fast local copy on this device.' : 'Everything lives on this device. Export a backup so years of journaling are never at the mercy of a cleared cache \u2014 and to carry your journal between devices. Restoring a backup merges it into what\u2019s already here, so writing on your phone and your iPad both keep their reflections.'), /*#__PURE__*/React.createElement("div", {
+  }, typeof HAS_GAS !== 'undefined' && HAS_GAS ? 'Your journal syncs to a private file in your Google Drive, so it follows you across every device you\u2019re signed into. It also keeps a fast local copy on this device.' : 'Everything lives on this device. Export a backup so years of journaling are never at the mercy of a cleared cache \u2014 and to carry everything between devices. Restoring always MERGES into what\u2019s already here \u2014 your reflections, verses, prayers, saved studies, and reading paths all combine, and nothing is ever overwritten. So different plans on different devices all gather together.'), /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
       gap: 10,
@@ -6187,10 +6305,10 @@ function Settings({
   }, /*#__PURE__*/React.createElement("button", {
     className: "btn ghost sm",
     onClick: exportData
-  }, "Export backup"), /*#__PURE__*/React.createElement("button", {
+  }, "Export a backup"), /*#__PURE__*/React.createElement("button", {
     className: "btn ghost sm",
     onClick: () => fileRef.current.click()
-  }, "Restore backup"), /*#__PURE__*/React.createElement("button", {
+  }, "Restore / merge a backup"), /*#__PURE__*/React.createElement("button", {
     className: "btn ghost sm",
     onClick: retake
   }, "Retake intake"), /*#__PURE__*/React.createElement("input", {
@@ -6466,6 +6584,13 @@ function App() {
     });
     setView('deepdive');
   }
+  function openPlan(id) {
+    if (id) save({
+      ...db,
+      planId: id
+    });
+    setView('plan');
+  }
   function startOver(mode, arg) {
     setEnc({
       mode,
@@ -6531,6 +6656,8 @@ function App() {
   }, l))))), view === 'home' && /*#__PURE__*/React.createElement(Home, {
     db: db,
     go: go,
+    save: save,
+    openPlan: openPlan,
     startEncounter: startEncounter,
     resumeEncounter: resumeEncounter,
     dismissDraft: dismissDraft,
@@ -6554,19 +6681,50 @@ function App() {
     save: save,
     go: go,
     toast: toast
-  }), view === 'plan' && (db.plan ? /*#__PURE__*/React.createElement(PlanView, {
-    db: db,
-    save: save,
-    go: go,
-    toast: toast,
-    startEncounter: startEncounter,
-    startDeepDive: startDeepDive
-  }) : /*#__PURE__*/React.createElement(PlanSetup, {
-    db: db,
-    save: save,
-    go: go,
-    toast: toast
-  })), view === 'deepdive' && deep && /*#__PURE__*/React.createElement(DiveDeeper, {
+  }), view === 'plan' && (() => {
+    const fp = focusedPlan(db);
+    if (!fp) return /*#__PURE__*/React.createElement(PlanSetup, {
+      db: db,
+      save: save,
+      go: go,
+      toast: toast
+    });
+    const pdb = {
+      ...db,
+      plan: fp
+    };
+    const psave = nd => {
+      let plans = (db.plans || []).slice();
+      if (!nd.plan) {
+        plans = plans.filter(p => p.id !== fp.id);
+      } else {
+        const up = nd.plan.id ? nd.plan : {
+          ...nd.plan,
+          id: fp.id
+        };
+        const ix = plans.findIndex(p => p.id === fp.id);
+        if (ix >= 0) plans[ix] = up;else plans.push(up);
+      }
+      const nextId = plans.find(p => p.id === db.planId) ? db.planId : plans[0] ? plans[0].id : null;
+      const rest = {
+        ...nd
+      };
+      delete rest.plan;
+      save({
+        ...rest,
+        plans: plans,
+        planId: nextId
+      });
+    };
+    return /*#__PURE__*/React.createElement(PlanView, {
+      db: pdb,
+      save: psave,
+      go: go,
+      toast: toast,
+      startEncounter: startEncounter,
+      startDeepDive: startDeepDive
+    });
+  })(), view === 'deepdive' && deep && /*#__PURE__*/React.createElement(DiveDeeper, {
     key: deep.key,
     db: db,
     go: go,
