@@ -1281,6 +1281,13 @@ function mergeData(cur, inc) {
       return [...m.values()];
     })(),
     welcomed: c.welcomed || i.welcomed,
+    draft: (() => {
+      const cd = c.draft,
+        id = i.draft;
+      if (!cd) return id || null;
+      if (!id) return cd;
+      return (id.savedAt || 0) > (cd.savedAt || 0) ? id : cd;
+    })(),
     settings: c.settings // keep THIS device's settings (keys, translation, font)
   };
 }
@@ -5952,6 +5959,7 @@ function Settings({
   const [showAiHelp, setShowAiHelp] = useState(false);
   const [resetText, setResetText] = useState('');
   const fileRef = useRef();
+  const importMode = useRef('merge');
   function saveSettings(patch) {
     save({
       ...db,
@@ -6012,6 +6020,20 @@ function Settings({
       }
       if (!d || typeof d !== 'object' || !d.entries && !d.profile) {
         toast('That doesn\u2019t look like a backup');
+        return;
+      }
+      if (importMode.current === 'replace') {
+        const nR = (d.entries || []).length;
+        const ok = window.confirm(`Replace everything on THIS device with the backup?\n\nWhat\u2019s on this device now will be removed and swapped for the backup (${nR} reflection${nR === 1 ? '' : 's'}). Your other devices and the backup file are untouched.\n\nOK = replace   \u00b7   Cancel = keep this device as-is`);
+        if (!ok) return;
+        const nd = {
+          ...d
+        };
+        if (!Array.isArray(nd.plans)) nd.plans = nd.plan ? [withPlanId(nd.plan)] : [];else nd.plans = nd.plans.map(withPlanId);
+        if (!nd.planId) nd.planId = nd.plans[0] ? nd.plans[0].id : null;
+        delete nd.plan;
+        save(nd);
+        toast('Replaced with the backup');
         return;
       }
       const merged = mergeData(db, d);
@@ -6296,7 +6318,7 @@ function Settings({
       fontSize: 14,
       margin: '6px 0 10px'
     }
-  }, typeof HAS_GAS !== 'undefined' && HAS_GAS ? 'Your journal syncs to a private file in your Google Drive, so it follows you across every device you\u2019re signed into. It also keeps a fast local copy on this device.' : 'Everything lives on this device. Export a backup so years of journaling are never at the mercy of a cleared cache \u2014 and to carry everything between devices. Restoring always MERGES into what\u2019s already here \u2014 your reflections, verses, prayers, saved studies, and reading paths all combine, and nothing is ever overwritten. So different plans on different devices all gather together.'), /*#__PURE__*/React.createElement("div", {
+  }, typeof HAS_GAS !== 'undefined' && HAS_GAS ? 'Your journal syncs to a private file in your Google Drive, so it follows you across every device you\u2019re signed into. It also keeps a fast local copy on this device.' : 'Everything lives on this device. Export a backup to keep years of journaling safe from a cleared cache \u2014 and to carry it between devices. The backup holds it all: reflections, verses, prayers, saved studies, your reading paths, and even a reflection you\u2019re still in the middle of. Restore & merge combines a backup into what\u2019s here (nothing overwritten \u2014 great for keeping several devices in step). Replace from a backup swaps this device\u2019s contents for the backup instead \u2014 handy when you just want to carry everything to a fresh device.'), /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
       gap: 10,
@@ -6307,8 +6329,17 @@ function Settings({
     onClick: exportData
   }, "Export a backup"), /*#__PURE__*/React.createElement("button", {
     className: "btn ghost sm",
-    onClick: () => fileRef.current.click()
-  }, "Restore / merge a backup"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      importMode.current = 'merge';
+      fileRef.current.click();
+    }
+  }, "Restore & merge"), /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost sm",
+    onClick: () => {
+      importMode.current = 'replace';
+      fileRef.current.click();
+    }
+  }, "Replace from a backup"), /*#__PURE__*/React.createElement("button", {
     className: "btn ghost sm",
     onClick: retake
   }, "Retake intake"), /*#__PURE__*/React.createElement("input", {
