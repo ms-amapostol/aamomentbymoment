@@ -4205,6 +4205,7 @@ function Encounter({
   draft,
   onStartOver
 }) {
+  arg = arg || {};
   const D = draft && draft.mode === mode ? draft : null;
   const dbRef = useRef(db);
   dbRef.current = db;
