@@ -41,13 +41,21 @@
   }
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
-  html{background:var(--parchment)}
+  /* time-of-day themes: shift the page ground + banner scrim (Night is dark, cards stay light) */
+  html{--page-bg:var(--parchment); --scrim:linear-gradient(180deg,rgba(15,36,64,.05) 0%,rgba(15,36,64,.15) 45%,rgba(15,36,64,.82) 100%); --greet-eye:var(--gilt-glow); transition:background .8s ease}
+  html[data-tod="dawn"]{--page-bg:linear-gradient(180deg,#f7f2ec,#eef2f7); --scrim:linear-gradient(180deg,rgba(255,238,214,.16) 0%,rgba(255,238,214,0) 34%,rgba(18,40,62,.58) 100%); --greet-eye:#e0a37e}
+  html[data-tod="morning"]{--page-bg:linear-gradient(180deg,#f2f7fc,#eef4fa); --scrim:linear-gradient(180deg,rgba(255,255,255,.10) 0%,rgba(255,255,255,0) 40%,rgba(15,36,64,.60) 100%); --greet-eye:var(--gilt-glow)}
+  html[data-tod="afternoon"]{--page-bg:linear-gradient(180deg,#f1f4f0,#ecf1f1); --scrim:linear-gradient(180deg,rgba(120,96,48,.10) 0%,rgba(120,96,48,0) 38%,rgba(15,36,64,.62) 100%); --greet-eye:#5bbfb2}
+  html[data-tod="dusk"]{--page-bg:linear-gradient(180deg,#e7e6ef,#dde1ee); --scrim:linear-gradient(180deg,rgba(206,120,58,.22) 0%,rgba(120,70,60,.08) 36%,rgba(18,22,52,.74) 100%); --greet-eye:#e8b487}
+  html[data-tod="night"]{--page-bg:linear-gradient(180deg,#111827,#0c1322); --scrim:linear-gradient(180deg,rgba(10,18,40,.5) 0%,rgba(10,16,38,.34) 30%,rgba(6,12,30,.88) 100%); --greet-eye:#a9c0da}
+  html{background:var(--page-bg)}
   body{
-    background:var(--parchment);
+    background:var(--page-bg);
     color:var(--ink);
     font-family:'Inter',system-ui,sans-serif;
     -webkit-font-smoothing:antialiased;
     line-height:1.55;
+    transition:background .8s ease;
   }
   #root{min-height:100vh}
   .serif{font-family:var(--read-font)}
@@ -122,7 +130,12 @@
   /* hero banner */
   .hero{position:relative;border-radius:var(--radius-lg);overflow:hidden;margin:0 0 26px;box-shadow:var(--shadow);aspect-ratio:16/8}
   .hero img{width:100%;height:100%;object-fit:cover;display:block}
-  .hero .scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(15,36,64,.05) 0%,rgba(15,36,64,.15) 45%,rgba(15,36,64,.82) 100%)}
+  .hero .scrim{position:absolute;inset:0;background:var(--scrim);transition:background .8s ease}
+  .tod-pill{position:absolute;top:12px;right:12px;z-index:3;display:inline-flex;align-items:center;gap:5px;
+    font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:#eef4fa;
+    background:rgba(10,20,40,.5);border:1px solid rgba(102,202,191,.4);border-radius:20px;
+    padding:5px 11px;cursor:pointer;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
+  .tod-pill:hover{background:rgba(10,20,40,.68)}
   .hero .htext{position:absolute;left:22px;right:22px;bottom:20px;color:#fff}
   .hero .htext .eyebrow{color:var(--gilt-glow);margin-bottom:6px}
   .hero .htext h2{font-family:'Fraunces',serif;font-weight:600;font-size:30px;line-height:1.12;margin:0;letter-spacing:-.015em;color:#fff;text-shadow:0 1px 12px rgba(0,0,0,.35)}
@@ -2783,6 +2796,9 @@ function Home({
   startEncounter,
   resumeEncounter,
   dismissDraft,
+  tod,
+  previewing,
+  cycleTod,
   showAiNudge,
   onDismissNudge
 }) {
@@ -2790,8 +2806,8 @@ function Home({
   const seenCh = Object.values(db.seen).reduce((a, arr) => a + arr.length, 0);
   const pct = seenCh / TOTAL_CH * 100;
   const answered = db.prayers.filter(x => x.answered).length;
-  const hr = new Date().getHours();
-  const salut = hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
+  const band = tod || todBand(new Date().getHours());
+  const salut = todGreeting(band);
   const STAGE_NAMES = ['', 'in prayer', 'reading', 'entering the story', 'reflecting', 'responding'];
   return /*#__PURE__*/React.createElement("div", {
     className: "wrap"
@@ -2802,10 +2818,17 @@ function Home({
     alt: ""
   }), /*#__PURE__*/React.createElement("div", {
     className: "scrim"
-  }), /*#__PURE__*/React.createElement("div", {
+  }), cycleTod && /*#__PURE__*/React.createElement("button", {
+    className: "tod-pill",
+    onClick: cycleTod,
+    title: "Preview a different time of day"
+  }, todLabel(band), previewing ? ' · preview' : ''), /*#__PURE__*/React.createElement("div", {
     className: "htext"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "eyebrow"
+    className: "eyebrow",
+    style: {
+      color: 'var(--greet-eye)'
+    }
   }, salut), /*#__PURE__*/React.createElement("h2", null, p.name, ", where shall we meet God today?"))), db.draft && /*#__PURE__*/React.createElement("div", {
     className: "door settle",
     role: "button",
@@ -6517,6 +6540,26 @@ function SyncIndicator({
   }), cfg[1]);
 }
 const HAS_GAS = typeof google !== 'undefined' && !!(google.script && google.script.run);
+const TOD_ORDER = ['dawn', 'morning', 'afternoon', 'dusk', 'night'];
+function todBand(hr) {
+  if (hr >= 5 && hr < 8) return 'dawn';
+  if (hr >= 8 && hr < 12) return 'morning';
+  if (hr >= 12 && hr < 17) return 'afternoon';
+  if (hr >= 17 && hr < 20) return 'dusk';
+  return 'night';
+}
+function todGreeting(band) {
+  return band === 'afternoon' ? 'Good afternoon' : band === 'dusk' || band === 'night' ? 'Good evening' : 'Good morning';
+}
+function todLabel(band) {
+  return {
+    dawn: '\uD83C\uDF05 Dawn',
+    morning: '\u2600\uFE0F Morning',
+    afternoon: '\uD83C\uDF24 Afternoon',
+    dusk: '\uD83C\uDF06 Dusk',
+    night: '\uD83C\uDF19 Night'
+  }[band] || band;
+}
 function App() {
   const [db, setDb] = useState(() => load() || blank());
   const [view, setView] = useState('home');
@@ -6526,6 +6569,24 @@ function App() {
   const [loaded, setLoaded] = useState(!HAS_GAS);
   const [syncStatus, setSyncStatus] = useState('idle'); // idle|saving|saved|offline
   const [aiNudgeDismissed, setAiNudgeDismissed] = useState(false);
+  const [previewTod, setPreviewTod] = useState(null);
+  const [, setTodTick] = useState(0);
+  const realTod = todBand(new Date().getHours());
+  const activeTod = previewTod || realTod;
+  useEffect(() => {
+    document.documentElement.setAttribute('data-tod', activeTod);
+  }, [activeTod]);
+  useEffect(() => {
+    const t = setInterval(() => setTodTick(x => x + 1), 60000);
+    return () => clearInterval(t);
+  }, []);
+  function cycleTod() {
+    setPreviewTod(prev => {
+      if (!prev) return TOD_ORDER[0];
+      const i = TOD_ORDER.indexOf(prev);
+      return i >= TOD_ORDER.length - 1 ? null : TOD_ORDER[i + 1];
+    });
+  }
   const saveTimer = useRef(null);
   useEffect(() => {
     // pull remote copy once on mount (GAS deployment only)
@@ -6711,6 +6772,9 @@ function App() {
     startEncounter: startEncounter,
     resumeEncounter: resumeEncounter,
     dismissDraft: dismissDraft,
+    tod: activeTod,
+    previewing: !!previewTod,
+    cycleTod: cycleTod,
     showAiNudge: !db.settings.aiKey && !aiNudgeDismissed,
     onDismissNudge: () => setAiNudgeDismissed(true)
   }), view === 'meet' && /*#__PURE__*/React.createElement(MeetPicker, {
