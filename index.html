@@ -48,6 +48,25 @@
   html[data-tod="afternoon"]{--page-bg:linear-gradient(180deg,#f1f4f0,#ecf1f1); --scrim:linear-gradient(180deg,rgba(120,96,48,.10) 0%,rgba(120,96,48,0) 38%,rgba(15,36,64,.62) 100%); --greet-eye:#5bbfb2}
   html[data-tod="dusk"]{--page-bg:linear-gradient(180deg,#e7e6ef,#dde1ee); --scrim:linear-gradient(180deg,rgba(206,120,58,.22) 0%,rgba(120,70,60,.08) 36%,rgba(18,22,52,.74) 100%); --greet-eye:#e8b487}
   html[data-tod="night"]{--page-bg:linear-gradient(180deg,#111827,#0c1322); --scrim:linear-gradient(180deg,rgba(10,18,40,.5) 0%,rgba(10,16,38,.34) 30%,rgba(6,12,30,.88) 100%); --greet-eye:#a9c0da}
+  /* night: lift page-level text off the dark ground; light surfaces keep their dark ink */
+  html[data-tod="night"]{--ink:#e7edf6;--ink-soft:#a8bbd2;--line:rgba(150,178,208,.24);--gilt:#4fbdb2}
+  html[data-tod="night"] .card,
+  html[data-tod="night"] .door,
+  html[data-tod="night"] .leaf,
+  html[data-tod="night"] .jsearch,
+  html[data-tod="night"] .keyhint,
+  html[data-tod="night"] .vpick,
+  html[data-tod="night"] .chip,
+  html[data-tod="night"] .tile,
+  html[data-tod="night"] .scale button,
+  html[data-tod="night"] textarea,
+  html[data-tod="night"] input,
+  html[data-tod="night"] select{--ink:#17263f;--ink-soft:#4b5b73;--line:#cfdce8;--gilt:#19827b;color:#17263f}
+  html[data-tod="night"] .chip.on,
+  html[data-tod="night"] .scale button.on{color:var(--gilt-glow)}
+  html[data-tod="night"] .tabs button.on{color:#eaf1f8}
+  html[data-tod="night"] .testlabel{color:#dbe6f4}
+  html[data-tod="night"] .btn.ghost:hover{background:rgba(255,255,255,.09)}
   html{background:var(--page-bg)}
   body{
     background:var(--page-bg);
@@ -1954,7 +1973,7 @@ function MicField({
       justifyContent: 'center',
       padding: 0,
       background: rec ? 'var(--rose)' : starting ? 'var(--gilt-2)' : 'var(--parchment-2)',
-      color: micActive ? '#fff' : 'var(--ink-soft)',
+      color: micActive ? '#fff' : '#4b5b73',
       boxShadow: rec ? '0 0 0 4px rgba(176,86,77,.18)' : 'none',
       transition: 'all .2s',
       opacity: starting ? 0.85 : 1
@@ -2842,7 +2861,7 @@ function Home({
       textAlign: 'left',
       margin: '0 0 18px',
       borderColor: 'var(--gilt-2)',
-      background: 'rgba(25,130,123,.05)',
+      background: 'linear-gradient(0deg,rgba(25,130,123,.06),rgba(25,130,123,.06)),var(--parchment-card)',
       position: 'relative',
       cursor: 'pointer',
       paddingRight: 44
@@ -3644,7 +3663,7 @@ Still hold the boundary: convey God's own words only by quoting actual Scripture
       padding: '11px 14px',
       borderRadius: m.role === 'me' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
       background: m.role === 'me' ? 'var(--vespers)' : 'var(--parchment-card)',
-      color: m.role === 'me' ? '#f4efff' : 'var(--ink)',
+      color: m.role === 'me' ? '#f4efff' : '#17263f',
       border: m.role === 'me' ? 'none' : '1px solid var(--line)',
       fontSize: m.role === 'me' ? 15 : 16,
       lineHeight: 1.6,
@@ -5211,6 +5230,7 @@ function FriendsView({
     onClick: () => setQ(m),
     style: {
       background: q === m ? 'rgba(25,130,123,.15)' : 'var(--parchment-2)',
+      color: '#17263f',
       border: '1px solid ' + (q === m ? 'var(--gilt-2)' : 'var(--line)'),
       borderRadius: 16,
       padding: '5px 11px',
@@ -6522,7 +6542,7 @@ function SyncIndicator({
       borderRadius: 20,
       padding: '6px 12px',
       fontSize: 11.5,
-      color: 'var(--ink-soft)',
+      color: '#4b5b73',
       boxShadow: 'var(--shadow)',
       pointerEvents: 'none',
       opacity: visible ? 1 : 0,
@@ -6976,7 +6996,7 @@ function WelcomeScreen({
     style: {
       fontSize: 16.5,
       lineHeight: 1.6,
-      color: 'var(--ink-soft)',
+      color: '#4b5b73',
       margin: '0 0 20px'
     }
   }, "If you'd ever like to share how God is meeting you here, I'd love to hear it. Let's connect on ", /*#__PURE__*/React.createElement("a", {
@@ -6997,7 +7017,7 @@ function WelcomeScreen({
     style: {
       textAlign: 'center',
       fontSize: 12,
-      color: 'var(--ink-soft)',
+      color: '#4b5b73',
       margin: '12px 0 0'
     }
   }, "This welcome only appears once, right here.")), /*#__PURE__*/React.createElement("p", {
