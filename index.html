@@ -15,10 +15,12 @@
 <title>Moment by Moment — drawing closer to God, one moment at a time</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Spectral:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400;1,6..72,500&family=Spectral:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
     --read-font:'Inter',system-ui,-apple-system,sans-serif;
+    /* Display serif for headers. Swap this one line to try another face. */
+    --display-font:'Newsreader',Georgia,'Times New Roman',serif;
     --ink:#17263f;
     --ink-soft:#4b5b73;
     --parchment:#eef4fa;
@@ -78,7 +80,7 @@
   }
   #root{min-height:100vh}
   .serif{font-family:var(--read-font)}
-  .display{font-family:'Fraunces',Georgia,serif;letter-spacing:-.012em}
+  .display{font-family:var(--display-font);letter-spacing:-.004em}
   button{font-family:inherit;cursor:pointer}
   a{color:var(--gilt)}
   :focus-visible{outline:2px solid var(--gilt);outline-offset:2px;border-radius:6px}
@@ -98,7 +100,7 @@
   .topbar .tb-right{justify-self:end}
   .brand{justify-self:center;text-align:center;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:1px}
   .brand img.brandmark{width:30px;height:30px;border-radius:50%;display:block;margin-bottom:4px;flex:none}
-  .brand h1{font-family:'Fraunces',serif;font-weight:600;font-size:23px;margin:0;letter-spacing:-.008em;color:#fff;line-height:1.1}
+  .brand h1{font-family:var(--display-font);font-weight:600;font-size:23px;margin:0;letter-spacing:-.002em;color:#fff;line-height:1.1}
   .brand small{display:block;font-family:'Spectral',Georgia,serif;font-style:italic;font-weight:400;font-size:12px;letter-spacing:0;text-transform:none;color:#a9c0da;margin-top:2px}
   .navrow{margin-top:10px;padding-top:9px;border-top:1px solid rgba(255,255,255,.09)}
   .nav{display:flex;gap:26px;justify-content:flex-start;flex-wrap:wrap}
@@ -145,7 +147,7 @@
 
   /* ---- home doors ---- */
   .greet{margin:6px 0 34px}
-  .greet h2{font-family:'Fraunces',serif;font-weight:600;font-size:35px;line-height:1.1;margin:8px 0 6px;letter-spacing:-.015em}
+  .greet h2{font-family:var(--display-font);font-weight:600;font-size:35px;line-height:1.12;margin:8px 0 6px;letter-spacing:-.006em}
   /* hero banner */
   .hero{position:relative;border-radius:var(--radius-lg);overflow:hidden;margin:0 0 26px;box-shadow:var(--shadow);aspect-ratio:16/8}
   .hero img{width:100%;height:100%;object-fit:cover;display:block}
@@ -157,7 +159,7 @@
   .tod-pill:hover{background:rgba(10,20,40,.68)}
   .hero .htext{position:absolute;left:22px;right:22px;bottom:20px;color:#fff}
   .hero .htext .eyebrow{color:var(--gilt-glow);margin-bottom:6px}
-  .hero .htext h2{font-family:'Fraunces',serif;font-weight:600;font-size:30px;line-height:1.12;margin:0;letter-spacing:-.015em;color:#fff;text-shadow:0 1px 12px rgba(0,0,0,.35)}
+  .hero .htext h2{font-family:var(--display-font);font-weight:600;font-size:30px;line-height:1.14;margin:0;letter-spacing:-.006em;color:#fff;text-shadow:0 1px 12px rgba(0,0,0,.35)}
   @media(max-width:520px){ .hero .htext h2{font-size:24px} .hero{aspect-ratio:16/10} }
   /* door image thumbnail */
   .door .dimg{width:60px;height:60px;border-radius:13px;object-fit:cover;flex:none;box-shadow:0 2px 8px rgba(15,36,64,.18)}
@@ -167,7 +169,7 @@
   .imgband img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
   .imgband .scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(15,36,64,.25),rgba(15,36,64,.78))}
   .imgband .bt{position:relative;padding:14px 18px;color:#fff}
-  .imgband .bt h2{font-family:'Fraunces',serif;font-weight:600;font-size:24px;margin:0;color:#fff;letter-spacing:-.01em;text-shadow:0 1px 10px rgba(0,0,0,.4)}
+  .imgband .bt h2{font-family:var(--display-font);font-weight:600;font-size:24px;margin:0;color:#fff;letter-spacing:-.004em;text-shadow:0 1px 10px rgba(0,0,0,.4)}
   .imgband .bt p{margin:3px 0 0;font-size:13px;color:#dfe8f4}
   .doors{display:grid;gap:16px}
   .door{
@@ -177,12 +179,12 @@
     color:var(--ink);-webkit-appearance:none;appearance:none;cursor:pointer;
   }
   .door:hover{transform:translateY(-2px);border-color:var(--gilt-2);box-shadow:0 2px 4px rgba(15,36,64,.05),0 18px 50px rgba(15,36,64,.12)}
-  .door .rune{font-family:'Fraunces',serif;font-size:31px;color:var(--gilt);line-height:1;margin-top:1px;flex:none;width:36px;text-align:center}
-  .door h3{font-family:'Fraunces',serif;font-weight:600;font-size:19px;margin:0 0 4px;color:var(--ink);letter-spacing:-.008em}
+  .door .rune{font-family:var(--display-font);font-size:31px;color:var(--gilt);line-height:1;margin-top:1px;flex:none;width:36px;text-align:center}
+  .door h3{font-family:var(--display-font);font-weight:600;font-size:19px;margin:0 0 4px;color:var(--ink);letter-spacing:-.002em}
   .door p{margin:0;font-size:13.5px;line-height:1.5;color:var(--ink-soft)}
   .stat-strip{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
   .stat{flex:1;min-width:110px;background:var(--vespers);color:#efeaf7;border-radius:12px;padding:13px 15px}
-  .stat b{font-family:'Fraunces',serif;font-size:23px;font-weight:600;display:block;color:var(--gilt-glow)}
+  .stat b{font-family:var(--display-font);font-size:23px;font-weight:600;display:block;color:var(--gilt-glow)}
   .stat span{font-size:11.5px;letter-spacing:.4px;color:var(--vespers-soft)}
 
   /* ---- passage / illuminated ---- */
@@ -190,7 +192,7 @@
   .passage-transl{font-size:11px;color:var(--ink-soft);letter-spacing:.5px}
   .passage{font-family:var(--read-font);font-size:20px;line-height:1.78;color:#17263f;margin-top:16px}
   .passage .drop{
-    float:left;font-family:'Fraunces',serif;font-weight:600;
+    float:left;font-family:var(--display-font);font-weight:600;
     font-size:70px;line-height:.8;padding:6px 13px 0 0;margin-top:4px;
     color:var(--gilt);text-shadow:0 1px 0 rgba(105,79,26,.25);
   }
@@ -225,7 +227,7 @@
   .tile.gilt .fill{background:linear-gradient(180deg,var(--gilt-glow),var(--gilt))}
   .tile abbr{position:relative;font-size:10px;font-weight:600;color:var(--ink);text-decoration:none;line-height:1;text-align:center;font-family:'Inter'}
   .tile.full abbr{color:#ffffff}
-  .testlabel{font-family:'Fraunces',serif;font-weight:600;font-size:15px;margin:20px 0 10px;color:var(--vespers)}
+  .testlabel{font-family:var(--display-font);font-weight:600;font-size:15px;margin:20px 0 10px;color:var(--vespers)}
 
   /* ---- journal list ---- */
   .tabs{display:flex;gap:4px;margin-bottom:22px;border-bottom:1px solid var(--line)}
@@ -265,10 +267,10 @@
   .leaf{background:var(--parchment-card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 34px 16px 18px;transition:border-color .2s}
   .leaf:hover{border-color:var(--gilt-2)}
   .leaf .ld{font-size:11px;letter-spacing:.7px;color:var(--gilt);text-transform:uppercase;font-weight:600}
-  .leaf .lr{font-family:'Fraunces',serif;font-size:17.5px;color:var(--ink);margin:5px 0 0;font-weight:600;line-height:1.25;letter-spacing:-.006em}
+  .leaf .lr{font-family:var(--display-font);font-size:17.5px;color:var(--ink);margin:5px 0 0;font-weight:600;line-height:1.28;letter-spacing:-.001em}
   .leaf .lp{font-size:14.5px;color:var(--ink-soft);margin:8px 0 0;line-height:1.55;font-family:var(--read-font)}
   .leaf .lp.clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-  .leaf .lquote{font-family:'Fraunces',serif;font-size:15.5px;font-style:italic;color:var(--gilt);margin:9px 0 0;line-height:1.5}
+  .leaf .lquote{font-family:var(--display-font);font-size:15.5px;font-style:italic;color:var(--gilt);margin:9px 0 0;line-height:1.5}
   .leaf .lsaid{font-size:14.5px;color:var(--sage);margin:10px 0 0;line-height:1.55;font-family:var(--read-font)}
   .leaf .lsaid b{font-size:11px;letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:2px}
   .leaf .lmore{font-size:12px;color:var(--gilt);font-weight:600;margin-top:9px;letter-spacing:.3px}
@@ -2573,7 +2575,7 @@ function Profile({
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      fontFamily: "'Fraunces',serif",
+      fontFamily: "var(--display-font)",
       fontSize: 42,
       border: '3px solid var(--gold)'
     }
