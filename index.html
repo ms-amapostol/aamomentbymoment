@@ -15,12 +15,12 @@
 <title>Moment by Moment — drawing closer to God, one moment at a time</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400;1,6..72,500&family=Spectral:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Spectral:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
     --read-font:'Inter',system-ui,-apple-system,sans-serif;
     /* Display serif for headers. Swap this one line to try another face. */
-    --display-font:'Newsreader',Georgia,'Times New Roman',serif;
+    --display-font:'Lora',Georgia,'Times New Roman',serif;
     --ink:#17263f;
     --ink-soft:#4b5b73;
     --parchment:#eef4fa;
@@ -3469,12 +3469,59 @@ function PlanSetup({
     onClick: () => deletePaused(i)
   }, "Delete"))))));
 }
+function PlanNextActions({
+  planDay,
+  finishPlanDay,
+  backToPlan,
+  onSave,
+  saveLabel
+}) {
+  const showPlan = !!(planDay && finishPlanDay && backToPlan);
+  if (!showPlan && !onSave) return null;
+  return /*#__PURE__*/React.createElement("div", {
+    className: "card settle",
+    style: {
+      marginTop: 18,
+      padding: '16px 18px'
+    }
+  }, showPlan && /*#__PURE__*/React.createElement("div", {
+    className: "eyebrow",
+    style: {
+      color: 'var(--gilt)'
+    }
+  }, "Day " + planDay.number + " of " + planDay.total), showPlan && /*#__PURE__*/React.createElement("p", {
+    className: "serif muted",
+    style: {
+      fontSize: 14.5,
+      lineHeight: 1.5,
+      margin: '4px 0 12px'
+    }
+  }, planDay.alreadyRead ? 'You have already read this day. Keep anything worth keeping, then carry on.' : 'When you are ready, keep what is worth keeping and take the next step.'), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 10,
+      flexWrap: 'wrap'
+    }
+  }, onSave && /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost sm",
+    onClick: onSave
+  }, saveLabel), showPlan && !planDay.alreadyRead && /*#__PURE__*/React.createElement("button", {
+    className: "btn gilt sm",
+    onClick: finishPlanDay
+  }, planDay.isLast ? "\u2713 Finish the plan" : "\u2713 Done \u00b7 go to Day " + (planDay.number + 1)), showPlan && /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost sm",
+    onClick: backToPlan
+  }, "\u2190 Back to my plan")));
+}
 function DiveDeeper({
   db,
   go,
   arg,
   save,
-  toast
+  toast,
+  planDay,
+  finishPlanDay,
+  backToPlan
 }) {
   const resume = arg.resumeStudy || null;
   const [passage, setPassage] = useState(null);
@@ -3722,16 +3769,13 @@ Still hold the boundary: convey God's own words only by quoting actual Scripture
     style: {
       flexShrink: 0
     }
-  }, "✨ Respond")), hasAI && hasConvo && /*#__PURE__*/React.createElement("div", {
-    style: {
-      marginTop: 14,
-      display: 'flex',
-      justifyContent: 'center'
-    }
-  }, /*#__PURE__*/React.createElement("button", {
-    className: "btn ghost sm",
-    onClick: saveStudy
-  }, savedId ? '\u2713 Saved — update study' : '\u2606 Save to Bible Studies')));
+  }, "✨ Respond")), hasAI && hasConvo && /*#__PURE__*/React.createElement(PlanNextActions, {
+    planDay: backTo === 'plan' ? planDay : null,
+    finishPlanDay: finishPlanDay,
+    backToPlan: backToPlan,
+    onSave: saveStudy,
+    saveLabel: savedId ? '\u2713 Saved — update study' : '\u2606 Save to Bible Studies'
+  }));
 }
 function PlanView({
   db,
@@ -4199,7 +4243,8 @@ function PlanView({
       refs: day.refs,
       topic: planTopic(db.plan),
       label: day.label,
-      note: day.note
+      note: day.note,
+      from: 'plan'
     })
   }, /*#__PURE__*/React.createElement("span", {
     className: "rune",
@@ -4219,7 +4264,8 @@ function PlanView({
     },
     onClick: () => startEncounter('ref', {
       ref: day.refs[0],
-      refs: day.refs
+      refs: day.refs,
+      from: 'plan'
     })
   }, /*#__PURE__*/React.createElement("span", {
     className: "rune",
@@ -4447,7 +4493,10 @@ function Encounter({
   toast,
   go,
   draft,
-  onStartOver
+  onStartOver,
+  planDay,
+  finishPlanDay,
+  backToPlan
 }) {
   arg = arg || {};
   const D = draft && draft.mode === mode ? draft : null;
@@ -4720,7 +4769,7 @@ In 2-4 warm sentences, as her companion closing this time together: FIRST gently
       setBlessingLoading(false);
     }
   }
-  function commit() {
+  function commit(then) {
     const now = new Date().toISOString();
     let reflectText;
     if (hasAI && convo.length) {
@@ -4772,7 +4821,17 @@ In 2-4 warm sentences, as her companion closing this time together: FIRST gently
     }
     newDb.draft = null;
     finalizedRef.current = true;
+    if (then === 'nextday' && finishPlanDay) {
+      toast('Kept in your journal');
+      finishPlanDay(newDb);
+      return;
+    }
     save(newDb);
+    if (then === 'plan' && backToPlan) {
+      toast('Kept in your journal');
+      backToPlan();
+      return;
+    }
     toast('Kept in your journal');
     go('journal');
   }
@@ -4806,6 +4865,7 @@ In 2-4 warm sentences, as her companion closing this time together: FIRST gently
     }
   }, "Turning to the page…"));
   const STEPS = ['Pray', 'Read', 'Enter', 'Reflect', 'Respond'];
+  const fromPlan = !!(arg && arg.from === 'plan' && finishPlanDay && backToPlan);
   const hasWork = convo.some(m => m.role === 'me') || convoInput.trim() || answers.some(a => a && a.trim()) || apply.trim() || prayer.trim() || pickVerses.size > 0;
   function leave() {
     go('home');
@@ -5189,8 +5249,14 @@ In 2-4 warm sentences, as her companion closing this time together: FIRST gently
     }
   }, /*#__PURE__*/React.createElement("button", {
     className: "btn gilt",
-    onClick: commit
-  }, "Keep this"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => commit('journal')
+  }, "Keep this"), fromPlan && planDay && !planDay.alreadyRead && /*#__PURE__*/React.createElement("button", {
+    className: "btn gilt",
+    onClick: () => commit('nextday')
+  }, planDay.isLast ? "Keep this \u00b7 finish the plan" : "Keep this \u00b7 Day " + (planDay.number + 1) + " \u2192"), fromPlan && /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost",
+    onClick: () => commit('plan')
+  }, "Keep this \u00b7 back to my plan"), /*#__PURE__*/React.createElement("button", {
     className: "btn ghost",
     onClick: leaveHome
   }, "Discard")))), hasAI && /*#__PURE__*/React.createElement("p", {
@@ -6888,6 +6954,62 @@ function App() {
     });
     setView('deepdive');
   }
+  // The day you are on in the plan, and a way to finish it without
+  // scrolling back up to the plan screen.
+  function currentPlanDay() {
+    const fp = focusedPlan(db);
+    if (!fp) return null;
+    const sch = planSchedule(fp);
+    if (!sch.length) return null;
+    const i = planDay != null && planDay >= 0 && planDay < sch.length ? planDay : Math.min(fp.index, sch.length - 1);
+    return {
+      plan: fp,
+      sch,
+      i,
+      day: sch[i],
+      number: i + 1,
+      total: sch.length,
+      alreadyRead: i < fp.index,
+      isLast: i >= sch.length - 1
+    };
+  }
+  function finishPlanDay(baseDb) {
+    const base = baseDb || db;
+    const c = currentPlanDay();
+    if (!c) {
+      go('plan');
+      return;
+    }
+    const newSeen = {
+      ...base.seen
+    };
+    (c.day.refs || []).forEach(r => {
+      const pr = parseRef(r);
+      if (pr) {
+        const st = new Set(newSeen[pr.book] || []);
+        st.add(pr.chapter);
+        newSeen[pr.book] = [...st];
+      }
+    });
+    const nextIndex = Math.max(c.plan.index, c.i + 1);
+    const plans = (base.plans || []).map(x => x.id === c.plan.id ? {
+      ...x,
+      index: nextIndex
+    } : x);
+    save({
+      ...base,
+      seen: newSeen,
+      plans
+    });
+    setPlanDay(nextIndex < c.sch.length ? nextIndex : null);
+    toast(nextIndex >= c.sch.length ? 'Plan complete' : 'Day ' + c.number + ' complete');
+    go('plan');
+    window.scrollTo(0, 0);
+  }
+  function backToPlan() {
+    go('plan');
+    window.scrollTo(0, 0);
+  }
   function openPlan(id) {
     if (id) save({
       ...db,
@@ -7043,9 +7165,15 @@ function App() {
     go: go,
     arg: deep,
     save: save,
-    toast: toast
+    toast: toast,
+    planDay: currentPlanDay(),
+    finishPlanDay: finishPlanDay,
+    backToPlan: backToPlan
   }), view === 'encounter' && enc && /*#__PURE__*/React.createElement(Encounter, {
     key: enc.key,
+    planDay: currentPlanDay(),
+    finishPlanDay: finishPlanDay,
+    backToPlan: backToPlan,
     mode: enc.mode,
     arg: enc.arg,
     db: db,
