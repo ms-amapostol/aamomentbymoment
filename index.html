@@ -2078,6 +2078,26 @@ function MicField({
     onClick: () => setShowTip(false)
   }, "Got it"))));
 }
+function buildVerseEntry(passage, pickedSet, dateISO) {
+  if (!passage || !pickedSet || !pickedSet.size || !passage.verses) return null;
+  const chosen = [...pickedSet].sort((a, b) => a - b).map(i => passage.verses[i]).filter(Boolean);
+  if (!chosen.length) return null;
+  const multi = passage.verses.length > 1;
+  const text = chosen.map(v => multi ? `${v.v} ${v.t}` : v.t).join(' ');
+  const nums = chosen.map(v => v.v);
+  const contiguous = nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
+  const refBase = passage.reference.replace(/:\d+(-\d+)?$/, '');
+  const vlabel = !multi ? '' : nums.length === 1 ? String(nums[0]) : contiguous ? `${nums[0]}-${nums[nums.length - 1]}` : nums.join(',');
+  const ref = multi && vlabel ? `${refBase}:${vlabel}` : passage.reference;
+  return {
+    id: 'v' + Date.now() + Math.floor(Math.random() * 1000),
+    date: dateISO,
+    ref,
+    text,
+    translation: passage.translation,
+    note: ''
+  };
+}
 function Passage({
   data,
   picked,
@@ -3717,15 +3737,86 @@ function PlanView({
   go,
   toast,
   startEncounter,
-  startDeepDive
+  startDeepDive,
+  viewDay,
+  setViewDay
 }) {
   const sch = planSchedule(db.plan);
-  const done = db.plan.index >= sch.length;
-  const idx = Math.min(db.plan.index, Math.max(sch.length - 1, 0));
+  const last = Math.max(sch.length - 1, 0);
+  // viewDay lets you look at any day (and survives a trip through Reflect)
+  // without moving your place in the plan.
+  const browsing = viewDay != null && viewDay >= 0 && viewDay < sch.length;
+  const done = db.plan.index >= sch.length && !browsing;
+  const idx = browsing ? Math.min(viewDay, last) : Math.min(db.plan.index, last);
   const day = sch[idx];
+  const isCurrent = idx === db.plan.index;
+  const isPast = idx < db.plan.index;
+  function goToDay(n) {
+    const t = Math.max(0, Math.min(n, last));
+    setViewDay(t);
+    window.scrollTo(0, 0);
+  }
+  function makeThisMyDay() {
+    save({
+      ...db,
+      plan: {
+        ...db.plan,
+        index: idx
+      }
+    });
+    setViewDay(idx);
+    toast('Day ' + (idx + 1) + ' is your place now');
+  }
+  function jumpToDay() {
+    const raw = window.prompt('Go to which day? (1\u2013' + sch.length + ')', String(idx + 1));
+    if (raw == null) return;
+    const n = parseInt(String(raw).trim(), 10);
+    if (!n || n < 1 || n > sch.length) {
+      toast('Pick a day between 1 and ' + sch.length);
+      return;
+    }
+    save({
+      ...db,
+      plan: {
+        ...db.plan,
+        index: n - 1
+      }
+    });
+    setViewDay(n - 1);
+    toast('Day ' + n + ' is your place now');
+    window.scrollTo(0, 0);
+  }
   const [texts, setTexts] = useState(null);
   const [loading, setLoading] = useState(!done);
   const [err, setErr] = useState('');
+  // Highlighted verses while reading the plan, keyed by passage index.
+  const [picks, setPicks] = useState({});
+  function togglePick(ti, vi) {
+    setPicks(prev => {
+      const s = new Set(prev[ti] || []);
+      s.has(vi) ? s.delete(vi) : s.add(vi);
+      const next = { ...prev };
+      if (s.size) next[ti] = s;else delete next[ti];
+      return next;
+    });
+  }
+  const pickCount = Object.values(picks).reduce((n, s) => n + s.size, 0);
+  function keepPicked() {
+    if (!texts || !pickCount) return;
+    const now = new Date().toISOString();
+    const fresh = [];
+    texts.forEach((d, i) => {
+      const entry = buildVerseEntry(d, picks[i], now);
+      if (entry) fresh.push(entry);
+    });
+    if (!fresh.length) return;
+    save({
+      ...db,
+      verses: [...fresh, ...db.verses]
+    });
+    setPicks({});
+    toast(fresh.length === 1 && pickCount === 1 ? 'Verse kept' : 'Verses kept');
+  }
   useEffect(() => {
     if (done || !day) {
       setLoading(false);
@@ -3754,7 +3845,10 @@ function PlanView({
     return () => {
       live = false;
     };
-  }, [db.plan.index]);
+  }, [idx, done]);
+  useEffect(() => {
+    setPicks({});
+  }, [idx]);
   function markRead() {
     const newSeen = {
       ...db.seen
@@ -3767,14 +3861,16 @@ function PlanView({
         newSeen[p.book] = [...s];
       }
     });
+    const nextIndex = Math.max(db.plan.index, idx + 1);
     save({
       ...db,
       seen: newSeen,
       plan: {
         ...db.plan,
-        index: db.plan.index + 1
+        index: nextIndex
       }
     });
+    setViewDay(nextIndex < sch.length ? nextIndex : null);
     toast('Marked as read');
     window.scrollTo(0, 0);
   }
@@ -3801,6 +3897,7 @@ function PlanView({
           index: 0
         }
       });
+      setViewDay(null);
       toast('Back to Day 1');
       window.scrollTo(0, 0);
     }
@@ -3906,10 +4003,33 @@ function PlanView({
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "eyebrow"
-  }, planTitle(db.plan), " · Day ", db.plan.index + 1, " of ", sch.length), /*#__PURE__*/React.createElement("button", {
+  }, planTitle(db.plan), " · Day ", idx + 1, " of ", sch.length), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 6,
+      flexShrink: 0
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost sm",
+    disabled: idx <= 0,
+    onClick: () => goToDay(idx - 1),
+    "aria-label": "Previous day",
+    style: {
+      opacity: idx <= 0 ? 0.4 : 1
+    }
+  }, "\u2039"), /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost sm",
+    disabled: idx >= last,
+    onClick: () => goToDay(idx + 1),
+    "aria-label": "Next day",
+    style: {
+      opacity: idx >= last ? 0.4 : 1
+    }
+  }, "\u203A"), /*#__PURE__*/React.createElement("button", {
     className: "btn ghost sm",
     onClick: pausePlan
-  }, "Set aside")), /*#__PURE__*/React.createElement("div", {
+  }, "Set aside"))), /*#__PURE__*/React.createElement("div", {
     className: "prog",
     style: {
       marginTop: 8
@@ -3918,14 +4038,36 @@ function PlanView({
     style: {
       width: pct + '%'
     }
-  })), /*#__PURE__*/React.createElement("h2", {
+  })), !isCurrent && /*#__PURE__*/React.createElement("div", {
+    className: "keyhint settle",
+    style: {
+      marginTop: 12,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+      flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement("span", null, isPast ? 'You already read this day. Your place is Day ' + (db.plan.index + 1) + '.' : 'Looking ahead. Your place is Day ' + (db.plan.index + 1) + '.'), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 8,
+      flexShrink: 0
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost sm",
+    onClick: () => goToDay(db.plan.index)
+  }, "Back to my day"), /*#__PURE__*/React.createElement("button", {
+    className: "btn gilt sm",
+    onClick: makeThisMyDay
+  }, "Make this my day"))), /*#__PURE__*/React.createElement("h2", {
     className: "display",
     style: {
       fontSize: 25,
       fontWeight: 600,
       margin: '10px 0 4px'
     }
-  }, "Today: ", day.label), day.note ? /*#__PURE__*/React.createElement("p", {
+  }, isCurrent ? 'Today: ' : 'Day ' + (idx + 1) + ': ', day.label), day.note ? /*#__PURE__*/React.createElement("p", {
     className: "serif muted",
     style: {
       fontSize: 15,
@@ -3947,30 +4089,67 @@ function PlanView({
     style: {
       marginTop: 14
     }
-  }, "Couldn't load the reading: ", err), texts && texts.map((d, i) => /*#__PURE__*/React.createElement("div", {
-    className: "card",
-    key: i,
+  }, "Couldn't load the reading: ", err), texts && texts.map((d, i) => {
+    const tappable = !d.raw && d.verses && d.verses.length;
+    const set = picks[i];
+    return /*#__PURE__*/React.createElement("div", {
+      className: "card",
+      key: i,
+      style: {
+        padding: '18px 20px',
+        marginTop: 14
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "passage-ref"
+    }, d.reference), /*#__PURE__*/React.createElement("div", {
+      className: "passage-transl"
+    }, d.translation), tappable && i === 0 && /*#__PURE__*/React.createElement("div", {
+      className: "hl-hint",
+      style: {
+        marginTop: 8
+      }
+    }, "Tap a verse to highlight it \u00b7 keep the ones that feed you"), /*#__PURE__*/React.createElement("div", {
+      className: "passage",
+      style: {
+        marginTop: 10,
+        fontSize: 17.5
+      }
+    }, d.raw ? /*#__PURE__*/React.createElement("span", {
+      dangerouslySetInnerHTML: {
+        __html: d.raw
+      }
+    }) : d.verses.map((v, j) => /*#__PURE__*/React.createElement("span", {
+      key: j,
+      className: tappable ? 'vhl' + (set && set.has(j) ? ' on' : '') : undefined,
+      onClick: tappable ? () => togglePick(i, j) : undefined
+    }, /*#__PURE__*/React.createElement("sup", null, v.v), v.t, " "))));
+  }), pickCount > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "settle",
     style: {
-      padding: '18px 20px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+      flexWrap: 'wrap',
       marginTop: 14
     }
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "passage-ref"
-  }, d.reference), /*#__PURE__*/React.createElement("div", {
-    className: "passage-transl"
-  }, d.translation), /*#__PURE__*/React.createElement("div", {
-    className: "passage",
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "muted",
     style: {
-      marginTop: 10,
-      fontSize: 17.5
+      fontSize: 13.5
     }
-  }, d.raw ? /*#__PURE__*/React.createElement("span", {
-    dangerouslySetInnerHTML: {
-      __html: d.raw
+  }, pickCount, pickCount === 1 ? ' verse highlighted' : ' verses highlighted'), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 8
     }
-  }) : d.verses.map((v, j) => /*#__PURE__*/React.createElement("span", {
-    key: j
-  }, /*#__PURE__*/React.createElement("sup", null, v.v), v.t, " "))))), canSplit && /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost sm",
+    onClick: () => setPicks({})
+  }, "Clear"), /*#__PURE__*/React.createElement("button", {
+    className: "btn gilt sm",
+    onClick: keepPicked
+  }, "Keep to my Scripture"))), canSplit && /*#__PURE__*/React.createElement("div", {
     className: "keyhint",
     style: {
       marginTop: 14,
@@ -3990,13 +4169,19 @@ function PlanView({
     style: {
       marginTop: 18
     }
-  }, /*#__PURE__*/React.createElement("button", {
+  }, isPast ? /*#__PURE__*/React.createElement("p", {
+    className: "muted",
+    style: {
+      fontSize: 13.5,
+      margin: '0 0 12px'
+    }
+  }, "\u2713 Read") : /*#__PURE__*/React.createElement("button", {
     className: "btn gilt",
     onClick: markRead,
     style: {
       marginBottom: 12
     }
-  }, "Mark as read →"), /*#__PURE__*/React.createElement("div", {
+  }, "\u2713 Mark as read"), /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'grid',
       gap: 10
@@ -4062,6 +4247,9 @@ function PlanView({
     className: "btn ghost sm",
     onClick: () => go('planSetup')
   }, "Switch plan"), /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost sm",
+    onClick: jumpToDay
+  }, "Go to a day\u2026"), /*#__PURE__*/React.createElement("button", {
     className: "btn ghost sm",
     onClick: restartPlan
   }, "Restart from Day 1"), /*#__PURE__*/React.createElement("button", {
@@ -4561,26 +4749,8 @@ In 2-4 warm sentences, as her companion closing this time together: FIRST gently
         [friend.id]: [...fset]
       };
     }
-    if (pickVerses.size && passage.verses) {
-      const chosen = [...pickVerses].sort((a, b) => a - b).map(i => passage.verses[i]).filter(Boolean);
-      if (chosen.length) {
-        const multi = passage.verses.length > 1;
-        const text = chosen.map(v => multi ? `${v.v} ${v.t}` : v.t).join(' ');
-        const nums = chosen.map(v => v.v);
-        const contiguous = nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
-        const refBase = passage.reference.replace(/:\d+(-\d+)?$/, '');
-        const vlabel = !multi ? '' : nums.length === 1 ? String(nums[0]) : contiguous ? `${nums[0]}-${nums[nums.length - 1]}` : nums.join(',');
-        const ref = multi && vlabel ? `${refBase}:${vlabel}` : passage.reference;
-        newDb.verses = [{
-          id: 'v' + Date.now(),
-          date: now,
-          ref,
-          text,
-          translation: passage.translation,
-          note: ''
-        }, ...db.verses];
-      }
-    }
+    const vEntry = buildVerseEntry(passage, pickVerses, now);
+    if (vEntry) newDb.verses = [vEntry, ...db.verses];
     if (prayer.trim()) {
       newDb.prayers = [{
         id: 'p' + Date.now(),
@@ -4854,7 +5024,7 @@ In 2-4 warm sentences, as her companion closing this time together: FIRST gently
     style: {
       color: 'var(--ink)'
     }
-  }, "Respond"), " moves on to close in prayer."), /*#__PURE__*/React.createElement("div", {
+  }, "Move forward"), " takes you on to close in prayer."), /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
       gap: 10,
@@ -4868,7 +5038,7 @@ In 2-4 warm sentences, as her companion closing this time together: FIRST gently
   }, "✨ Go deeper →"), /*#__PURE__*/React.createElement("button", {
     className: "btn ghost sm",
     onClick: goRespond
-  }, "✨ I'm ready to respond →")))) : /*#__PURE__*/React.createElement(React.Fragment, null, questions.length === 0 && /*#__PURE__*/React.createElement("p", {
+  }, "✨ Ready to move forward →")))) : /*#__PURE__*/React.createElement(React.Fragment, null, questions.length === 0 && /*#__PURE__*/React.createElement("p", {
     className: "serif muted",
     style: {
       fontSize: 16
@@ -4899,7 +5069,7 @@ In 2-4 warm sentences, as her companion closing this time together: FIRST gently
   }, /*#__PURE__*/React.createElement("button", {
     className: "btn gilt",
     onClick: goRespond
-  }, "Respond →")))), stage === 5 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+  }, "Move forward →")))), stage === 5 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
     className: "btn ghost sm",
     onClick: () => setStage(4),
     style: {
@@ -6583,6 +6753,7 @@ function todLabel(band) {
 function App() {
   const [db, setDb] = useState(() => load() || blank());
   const [view, setView] = useState('home');
+  const [planDay, setPlanDay] = useState(null);
   const [enc, setEnc] = useState(null);
   const [deep, setDeep] = useState(null);
   const [toastMsg, setToastMsg] = useState('');
@@ -6720,6 +6891,7 @@ function App() {
       ...db,
       planId: id
     });
+    setPlanDay(null);
     setView('plan');
   }
   function startOver(mode, arg) {
@@ -6753,6 +6925,9 @@ function App() {
     setView(v);
     if (v !== 'encounter') setEnc(null);
     if (v !== 'deepdive') setDeep(null);
+    // Keep the day you were on while you step into Reflect or Dive Deeper,
+    // so coming back lands you where you left rather than on your next day.
+    if (v !== 'plan' && v !== 'encounter' && v !== 'deepdive') setPlanDay(null);
   }
   const NAV = [['home', 'Home'], ['journal', 'Journal'], ['map', 'Map'], ['profile', 'Profile'], ['settings', 'Settings']];
   return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
@@ -6856,7 +7031,9 @@ function App() {
       go: go,
       toast: toast,
       startEncounter: startEncounter,
-      startDeepDive: startDeepDive
+      startDeepDive: startDeepDive,
+      viewDay: planDay,
+      setViewDay: setPlanDay
     });
   })(), view === 'deepdive' && deep && /*#__PURE__*/React.createElement(DiveDeeper, {
     key: deep.key,
