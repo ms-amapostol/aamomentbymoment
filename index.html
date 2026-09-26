@@ -4217,19 +4217,12 @@ function PlanView({
     style: {
       marginTop: 18
     }
-  }, isPast ? /*#__PURE__*/React.createElement("p", {
-    className: "muted",
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "eyebrow",
     style: {
-      fontSize: 13.5,
-      margin: '0 0 12px'
+      marginBottom: 10
     }
-  }, "\u2713 Read") : /*#__PURE__*/React.createElement("button", {
-    className: "btn gilt",
-    onClick: markRead,
-    style: {
-      marginBottom: 12
-    }
-  }, "\u2713 Mark as read"), /*#__PURE__*/React.createElement("div", {
+  }, "Sit with it before you move on"), /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'grid',
       gap: 10
@@ -4278,7 +4271,32 @@ function PlanView({
     style: {
       fontSize: 16
     }
-  }, "Reflect on my own life"), /*#__PURE__*/React.createElement("p", null, "Sit with how this passage meets you personally, and respond to God."))))), /*#__PURE__*/React.createElement("p", {
+  }, "Reflect on my own life"), /*#__PURE__*/React.createElement("p", null, "Sit with how this passage meets you personally, and respond to God.")))), isPast ? /*#__PURE__*/React.createElement("p", {
+    className: "muted",
+    style: {
+      fontSize: 13.5,
+      margin: '18px 0 0'
+    }
+  }, "\u2713 You've read this day") : /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 20,
+      paddingTop: 16,
+      borderTop: '1px solid var(--line)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+      flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "muted",
+    style: {
+      fontSize: 13.5
+    }
+  }, "Read, reflected, and ready for the next day?"), /*#__PURE__*/React.createElement("button", {
+    className: "btn gilt",
+    onClick: markRead
+  }, "\u2713 Mark as read"))), /*#__PURE__*/React.createElement("p", {
     className: "muted",
     style: {
       fontSize: 12.5,
