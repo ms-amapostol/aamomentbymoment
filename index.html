@@ -1171,9 +1171,6 @@ function load() {
     const r = localStorage.getItem(LS_KEY);
     if (!r) return null;
     const d = JSON.parse(r);
-    if (d && d.settings && !d.settings.bibleKey) {
-      d.settings.bibleKey = DEFAULT_BIBLE_KEY;
-    }
     if (d) {
       // migrate: single `plan` -> `plans` array (+ focused planId)
       if (!Array.isArray(d.plans)) {
@@ -1203,7 +1200,8 @@ function focusedPlan(db) {
   const ps = activePlans(db);
   return ps.find(p => p.id === db.planId) || ps[0] || null;
 }
-const DEFAULT_BIBLE_KEY = 'MM1KhTbr_s-qd0YnBNMqn';
+/* No built-in API.Bible key: a key in public code can be copied by anyone. Paste your own under Settings; it stays on this device. */
+const DEFAULT_BIBLE_KEY = '';
 const DEFAULT_BIBLES = [{
   id: 'd6e14a625393b4da-01',
   name: 'New Living Translation',
@@ -1426,7 +1424,7 @@ async function fetchWeb(ref, translation) {
 }
 async function fetchPassage(ref, settings) {
   const t = settings.translation;
-  const premium = knownBibles(settings).find(b => b.id === t);
+  const premium = settings.bibleKey ? knownBibles(settings).find(b => b.id === t) : null;
   if (premium) {
     try {
       const p = parseRef(ref);
@@ -1437,7 +1435,7 @@ async function fetchPassage(ref, settings) {
         pid += '.' + p.v1;
         if (p.v2) pid += '-' + code + '.' + p.chapter + '.' + p.v2;
       }
-      const key = settings.bibleKey || DEFAULT_BIBLE_KEY;
+      const key = settings.bibleKey;
       const r = await fetch(`https://api.scripture.api.bible/v1/bibles/${t}/passages/${pid}?content-type=text&include-verse-numbers=true&include-titles=false&include-notes=false`, {
         headers: {
           'api-key': key
@@ -6279,7 +6277,7 @@ function Settings({
   const [aiModel, setAiModel] = useState(s.aiModel);
   const [loadingBibles, setLoadingBibles] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
-  const [showOwnKey, setShowOwnKey] = useState(s.bibleKey && s.bibleKey !== DEFAULT_BIBLE_KEY);
+  const [showOwnKey, setShowOwnKey] = useState(!!s.bibleKey);
   const [showAiHelp, setShowAiHelp] = useState(false);
   const [resetText, setResetText] = useState('');
   const fileRef = useRef();
@@ -6322,7 +6320,16 @@ function Settings({
     setLoadingBibles(false);
   }
   function exportData() {
-    const blob = new Blob([JSON.stringify(db, null, 2)], {
+    // Keys never go into a backup file: a shared or emailed backup must not hand over a working API key.
+    const safe = {
+      ...db,
+      settings: {
+        ...db.settings,
+        aiKey: '',
+        bibleKey: ''
+      }
+    };
+    const blob = new Blob([JSON.stringify(safe, null, 2)], {
       type: 'application/json'
     });
     const a = document.createElement('a');
@@ -6350,8 +6357,14 @@ function Settings({
         const nR = (d.entries || []).length;
         const ok = window.confirm(`Replace everything on THIS device with the backup?\n\nWhat\u2019s on this device now will be removed and swapped for the backup (${nR} reflection${nR === 1 ? '' : 's'}). Your other devices and the backup file are untouched.\n\nOK = replace   \u00b7   Cancel = keep this device as-is`);
         if (!ok) return;
+        // Keep this device's own keys; a backup never brings keys with it.
         const nd = {
-          ...d
+          ...d,
+          settings: {
+            ...(d.settings || {}),
+            aiKey: s.aiKey || '',
+            bibleKey: s.bibleKey || ''
+          }
         };
         if (!Array.isArray(nd.plans)) nd.plans = nd.plan ? [withPlanId(nd.plan)] : [];else nd.plans = nd.plans.map(withPlanId);
         if (!nd.planId) nd.planId = nd.plans[0] ? nd.plans[0].id : null;
